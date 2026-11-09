@@ -1,0 +1,166 @@
+---
+title: "DiffPTM: the graphical interface step by step"
+author: "DiffPTM"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{DiffPTM: the graphical interface step by step}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+source("_setup.R")
+```
+
+## What DiffPTM does
+
+A modified peptide's intensity changes when the modification changes **and** when its
+protein changes. DiffPTM separates the two questions:
+
+* **differential PTM abundance (DPA)**: does the site change between conditions, whatever
+  the reason?
+* **differential PTM usage (DPU)**: does the site change *relative to its protein*? This
+  needs the total-proteome table and is the test DiffPTM is built for.
+
+Three statistical methods answer the usage question and can be run side by side on the same
+processed data: the single model (limma; paired when the PTM and proteome samples share
+their names), MSstatsPTM (model then correct) and msqrob2PTM (correct then model). They
+give the same usage fold changes but different standard errors. By default the single model
+pairs each site with its protein sample by sample (per-site paired single model, the limma
+analysis of the within-sample differences); the consensus version, which shares one
+correlation between all sites, gains degrees of freedom but assumes that a site and its
+protein vary alike, which `dpu_diagnostics()` checks. MSstatsPTM is the choice when the two
+fractions do not come from the same samples.
+
+Every usage test assumes that, without a usage change, a site follows its protein one to one.
+`usage_beta_check()` refits the usage model with the protein term scaled by 0.8 and 1.2 and
+flags the calls that do not survive; calls on sites whose protein changes strongly are the
+least robust and are worth confirming by another method. Normalisation sets the reference of
+usage: the default global centring removes a between-condition shift of the enriched fraction,
+which is right when loading is not controlled but removes a genuine global change of
+modification (for example after stimulation); per-condition centring is available for
+experiments in which loading is controlled independently.
+
+## Starting the interface
+
+```{r, eval = FALSE}
+library(DiffPTM)
+run_app()
+```
+
+The interface opens in the browser and runs on your computer: no data leave it. It is
+organised in six steps, each a page of the left menu. Every step calls exported functions of
+the package, so an analysis done in the interface can be reproduced in R from the saved
+session (see the last section).
+
+## 1. Import
+
+Choose the software, upload the **total-proteome table** and the **PTM table** and click
+*Import*. The formats accepted for each software are listed in the Help page and in the
+vignettes *DiffPTM with MaxQuant*, *... with Spectronaut*, *... with Proteome Discoverer*,
+*... with FragPipe* and *... with DIA-NN*.
+
+Intensities are expected raw (the app applies log2). Untick *Intensities are raw* for tables
+already on the log2 scale (FragPipe TMT-Integrator); the app warns when the scale looks wrong.
+
+*Load example dataset* loads a simulated label-free experiment (1,500 proteins, 800
+phosphosites, two conditions with four samples each) with its design, to try the interface.
+
+## 2. Design
+
+Every sample needs a **condition**. Two ways to fill the tables: *Pre-fill from sample
+names*, which cuts the names at the separator and uses the chosen tokens (`-1` means
+everything but the last token, i.e. the name without its replicate number), or upload an
+annotation table (`sample`, `condition`, optional `factor`, `subject`, `mixture`). Cells
+can be edited by double-clicking. Samples left without a condition are excluded.
+
+**Sample names must match between the two tables for the paired analysis.** When the
+PTM and proteome runs of the same biological sample have different names, which is the rule
+(`Phospho_mock_1` and `mock_1` in a combined MaxQuant search; `Phospho-01_NS_R1` and
+`Proteome-01_NS_R1` in Spectronaut), give each table a regular expression whose capture
+group is the common name. Samples that do not match the expression are dropped, which also
+removes the proteome runs that a MaxQuant site table lists alongside the enriched runs. The
+preview under the fields tells how many samples are kept and how many names are shared.
+
+Optional columns: a **second factor** (time point, batch; contrasts are built within each
+level and ComBat can use it), a **subject** for paired designs across conditions (used as a
+blocking factor) and the **TMT mixture**.
+
+## 3. Processing
+
+* *Filtering*: reverse hits and contaminants; site rows repeated for several protein
+  accessions with identical quantities (Spectronaut); minimal localization probability;
+  minimal number (and percentage) of observed values in at least one group.
+* *PTM to protein matching*: by identifier (fast) or by locating the peptide sequence in the
+  FASTA of the search (robust to differences of protein inference between the two
+  searches). For peptide tables without site positions (DIA-NN precursors, FragPipe
+  modified peptides) the FASTA also gives the site positions.
+* *Normalisation*: per-condition median centering (default), global median, ComBat, none.
+* *Imputation*: off by default. The three methods fit on observed values; imputing before
+  the correction inflates false discoveries.
+
+The **quality-control** plots show, for each table: the number of features observed per
+sample (runs that quantified far fewer features than the others stand out and should be
+removed in step 2), the Jaccard index of detection between samples with the conditions as a
+colour strip, a PCA and the intensity distributions. The processing log lists every
+operation; it becomes the Materials & Methods paragraph of the report.
+
+## 4. Statistics
+
+Choose the methods (the single model is always available; MSstatsPTM and msqrob2PTM when
+installed), the analyses (protein abundance, PTM abundance, PTM usage), the contrasts (each
+condition against a reference, every pair, or each condition against the others), the
+π₀-aware FDR procedure, the FDR threshold and an optional fold-change threshold (1 = none,
+the recommended setting for usage).
+
+## 5. Results
+
+For the selected analysis, contrast and method: a volcano plot labelled with gene and site,
+the raw p-value histogram (flat with a peak near 0 when the test is well calibrated), the
+PTM-vs-protein fold-change plot (points off the diagonal change in usage), the number of
+significant features per contrast and method, the agreement between methods, the table of
+significant features and the detection-discordance table (PTM features observed in samples
+where their protein was not quantified, which no quantitative test can use).
+
+## 6. Download
+
+An Excel workbook with every table, a README sheet and the Materials & Methods paragraph;
+the figures as an editable PowerPoint and as PDF; and the session as an `.rds` file.
+
+## Reproducing an interface analysis in R
+
+The `.rds` session contains the processed experiment (`x`), the results (`res`), the
+contrasts and the thresholds:
+
+```{r, eval = FALSE}
+s <- readRDS("DiffPTM_session.rds")
+s$x                              # processed ptm_experiment, with its log
+head(s$res)                      # tidy results: feature_id, analysis, contrast, log2FC, se, statistic, pvalue, adj_pvalue, method
+cat(methods_paragraph(s$x, s$methods))
+plot_volcano(subset(s$res, analysis == "ptm_DPU" & contrast == s$contrasts$name[1] & method == "limma"), s$fdr)
+```
+
+The same analysis from scratch, with the example dataset shipped in the package:
+
+```{r example}
+library(DiffPTM)
+ex <- system.file("extdata", "example", package = "DiffPTM")
+prot <- import_protein(file.path(ex, "protein.tsv"), "Generic")
+ptm  <- import_ptm(file.path(ex, "ptm.tsv"), "Generic")
+ann  <- read_annotation(file.path(ex, "annotation.tsv"))
+x <- new_ptm_experiment(prot, ptm, annotation = list(protein = ann, ptm = ann)) |>
+  filter_localization(0.75) |> filter_min_observed(min_n = 2) |>
+  normalise(method = "global_median") |> match_ptm_to_protein("id")
+x
+res <- run_methods(x, make_contrasts(x), methods = "limma", pi0_method = "bh")
+table(res$analysis, res$adj_pvalue < 0.05)
+```
+
+```{r example-plots, fig.height = 5}
+r <- subset(res, analysis == "ptm_DPU")
+r$label <- x$ptm$meta$label[match(r$feature_id, x$ptm$meta$feature_id)]
+plot_volcano(r, fdr = 0.05, title = "PTM usage, treated vs control")
+```

@@ -1,0 +1,85 @@
+---
+title: "DiffPTM with DIA-NN"
+author: "DiffPTM"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{DiffPTM with DIA-NN}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+source("_setup.R")
+```
+
+## Files
+
+| Table | File | Columns DiffPTM reads |
+|---|---|---|
+| total proteome | `report.pg_matrix.tsv` of the proteome analysis | `Protein.Group`, `Genes`, one column per raw file |
+| PTM | `report.pr_matrix.tsv` of the enrichment analysis (precursors), or a site matrix (`report.phosphosites_90.tsv` with DIA-NN ≥ 1.9) | `Protein.Group`, `Genes`, `Stripped.Sequence`, `Modified.Sequence`, `Precursor.Charge`, one column per raw file |
+
+DIA-NN names the sample columns after the **full path of the raw files**
+(`D:\data\run_control_1.raw`); DiffPTM keeps the file name without its folder and extension
+(`run_control_1`). Modified sequences use UniMod codes: `AAAS(UniMod:21)PAK` is a
+phosphoserine; `UniMod:4` (carbamidomethyl), `UniMod:35` (oxidation) and `UniMod:1`
+(acetyl) are ignored when sites are located.
+
+The precursor matrix has one row per precursor: a modified peptide seen with two charge
+states gives two rows. They are summed into one peptidoform in the processing step
+(*Collapse peptidoforms to sites* with the modified sequence as key, or
+`collapse_to_sites(x, "sum", site_key = modified_sequence)` in R). The protein position of
+the site is not in the matrix: give the **FASTA of the search** in the processing step and
+DiffPTM locates each peptide in its protein (`locate_sites()`); without the FASTA the residue
+and the position within the peptide are known, which is enough for the usage test but not for
+collapsing peptidoforms of the same site.
+
+The example files `inst/extdata/formats/DIA-NN/` reproduce this layout, with
+`inst/extdata/formats/example.fasta`.
+
+## In the interface
+
+1. **Import**: software *DIA-NN*; upload `report.pg_matrix.tsv` and `report.pr_matrix.tsv`.
+2. **Design**: if the raw files of the two analyses have different names
+   (`phos_control_1.raw` and `prot_control_1.raw`), enter `^phos_(.+)$` and `^prot_(.+)$`
+   as patterns; then *Pre-fill from sample names*.
+3. **Processing**: upload the FASTA of the search; sites of the precursor table are located
+   automatically (the log says how many peptides were found); tick *Collapse peptidoforms to
+   sites*.
+4. **Statistics**, **Results**, **Download** as in the overview vignette.
+
+## The same analysis in R
+
+```{r import}
+library(DiffPTM)
+prot <- import_protein(fx("DIA-NN", "report.pg_matrix.tsv"), "DIA-NN")
+ptm  <- import_ptm(fx("DIA-NN", "report.pr_matrix.tsv"), "DIA-NN")
+colnames(prot$intensity)
+nrow(ptm$intensity)                                   # precursors
+prot <- rename_samples(prot, "^run_(.+)$"); ptm <- rename_samples(ptm, "^run_(.+)$")
+ann <- guess_annotation(colnames(prot$intensity), "[_]", condition_pos = "-1")
+x <- new_ptm_experiment(prot, ptm, annotation = list(protein = ann, ptm = ann))
+x <- collapse_to_sites(x, "sum", site_key = x$ptm$meta$modified_sequence)   # precursors -> peptidoforms
+x <- locate_sites(x, fx("example.fasta"))
+head(x$ptm$meta[, c("feature_id", "label", "stripped_sequence", "residue", "position", "position_in_peptide", "multiplicity")])
+```
+
+```{r analysis}
+x <- x |> filter_min_observed(min_n = 2) |> normalise(method = "global_median") |> match_ptm_to_protein("sequence", fasta = fx("example.fasta"))
+cat(x$log, sep = "\n")
+res <- run_methods(x, make_contrasts(x, "vs_reference", reference = "control"), "limma", pi0_method = "bh")
+res$label <- x$ptm$meta$label[match(res$feature_id, x$ptm$meta$feature_id)]
+table(res$analysis, significant = res$adj_pvalue < 0.05)
+```
+
+```{r volcano, fig.height = 5}
+plot_volcano(subset(res, analysis == "ptm_DPU"), fdr = 0.05, title = "PTM usage, treated vs control")
+```
+
+Sequence-based matching (`match_ptm_to_protein("sequence", fasta = )`) is recommended for
+DIA-NN as for any pair of searches run separately: the protein groups inferred from the
+enriched sample and from the proteome often differ, and matching by identifier then loses
+sites.

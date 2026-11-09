@@ -1,0 +1,12 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.github$
+^Dockerfile$
+^README\.md$
+^LICENSE\.md$
+^CONTRIBUTING\.md$
+^\.gitignore$
+^benchmark$
+^doc$
+^Meta$
+^docs$

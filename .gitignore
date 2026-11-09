@@ -1,0 +1,23 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.RDataTmp*
+.Ruserdata
+*.Rproj
+# build and check products
+*.tar.gz
+*.Rcheck/
+doc/
+Meta/
+vignettes/*.html
+vignettes/*.R
+!vignettes/_setup.R
+docs/
+# outputs written when running the app or the benchmarks locally
+/benchmark/
+*.xlsx
+*.pptx
+*.pdf
+.DS_Store
+Thumbs.db

@@ -1,0 +1,57 @@
+mod_stats_ui <- function(id) {
+  ns <- shiny::NS(id)
+  shiny::tagList(
+    shiny::h3("Differential analysis"),
+    shiny::fluidRow(
+      shiny::column(4,
+        shiny::checkboxGroupInput(ns("methods"), "Statistical methods (run side by side)",
+                                  c("Single model (limma; paired when PTM and proteome samples share names)" = "limma", "MSstatsPTM (model then correct)" = "msstatsptm", "msqrob2PTM (correct then model)" = "msqrob2ptm"),
+                                  selected = "limma"),
+        shiny::uiOutput(ns("method_note")),
+        shiny::checkboxGroupInput(ns("analyses"), "Analyses", c("Protein abundance (DPA)" = "protein_DPA", "PTM abundance (DPA)" = "ptm_DPA", "PTM usage, corrected for protein (DPU)" = "ptm_DPU"),
+                                  selected = c("protein_DPA", "ptm_DPA", "ptm_DPU")),
+        shiny::radioButtons(ns("ctype"), "Contrasts", c("Each condition vs a reference" = "vs_reference", "Each pair of conditions" = "pairwise", "Each condition vs the others" = "vs_all"), inline = TRUE),
+        shiny::uiOutput(ns("reference_ui")),
+        shiny::radioButtons(ns("blocking"), "Within-sample pairing of site and protein (usage) / subject blocking",
+                            c("Per-site pairing, fixed sample effect (default)" = "auto",
+                              "Consensus correlation, random sample effect (complete pairs)" = "random", "None (unpaired)" = "none"), inline = FALSE)
+      ),
+      shiny::column(4,
+        shiny::selectInput(ns("pi0"), "pi0 estimator for FDR (cp4p)", c("pounds", "abh", "st.spline", "st.boot", "langaas", "histo", "jiang", "slim", "bh")),
+        shiny::numericInput(ns("fdr"), "FDR threshold", 0.05, 0, 1, 0.01),
+        shiny::numericInput(ns("fc"), "Minimal fold change (linear; 1 = no fold-change filter)", 1, 1, step = 0.1),
+        shiny::actionButton(ns("run"), "Run", class = "btn-primary", icon = shiny::icon("play"))
+      ),
+      shiny::column(4, shiny::h4("Contrasts to be tested"), shiny::tableOutput(ns("contrasts")))
+    )
+  )
+}
+
+mod_stats_server <- function(id, processed) {
+  shiny::moduleServer(id, function(input, output, session) {
+    output$method_note <- shiny::renderUI({
+      miss <- setdiff(c("msstatsptm", "msqrob2ptm"), available_methods())
+      if (length(miss)) shiny::p(class = "step-help", "Not installed on this server: ", paste(miss, collapse = ", "))
+    })
+    output$reference_ui <- shiny::renderUI({
+      x <- processed(); shiny::req(x, input$ctype == "vs_reference")
+      shiny::selectInput(session$ns("reference"), "Reference (control) condition", unique(x$annotation$ptm$condition))
+    })
+    contrasts <- shiny::reactive({ shiny::req(processed())
+      tryCatch(make_contrasts(processed(), input$ctype, reference = if (input$ctype == "vs_reference") input$reference else NULL),
+               error = function(e) NULL) })
+    output$contrasts <- shiny::renderTable(contrasts())
+    out <- shiny::eventReactive(input$run, {
+      x <- processed(); shiny::req(x)
+      sel <- intersect(input$methods, available_methods())
+      shiny::withProgress(message = "Fitting models", {
+        shiny::req(contrasts())
+        res <- tryCatch(run_methods(x, contrasts(), methods = sel, analyses = input$analyses, pi0_method = input$pi0, blocking = input$blocking),
+                        error = function(e) { shiny::showNotification(conditionMessage(e), type = "error", duration = NULL); NULL })
+      })
+      shiny::req(res)
+      list(x = x, res = res, contrasts = contrasts(), fdr = input$fdr, min_log2fc = log2(input$fc), methods = sel, blocking = input$blocking)
+    })
+    out
+  })
+}

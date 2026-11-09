@@ -1,0 +1,110 @@
+---
+title: "DiffPTM with Spectronaut"
+author: "DiffPTM"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{DiffPTM with Spectronaut}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+source("_setup.R")
+```
+
+## Files
+
+Export two **pivot reports** from Spectronaut (Report → Pivot layout, one row per protein
+group or per PTM site, one column block per run):
+
+| Table | Report | Columns DiffPTM reads |
+|---|---|---|
+| total proteome | protein pivot report of the proteome analysis | `PG.ProteinGroups`, `PG.Genes`, `[n] <run>.PG.Quantity` (or `.PG.MS2Quantity`) |
+| PTM | PTM site pivot report of the phospho (or ubiquitin, ...) analysis, with *PTM localization* enabled | `PTM.ProteinId`, `PG.Genes`, `PTM.CollapseKey`, `PTM.SiteAA`, `PTM.SiteLocation`, `PTM.FlankingRegion`, `PTM.Multiplicity`, `PTM.ModificationTitle`, `[n] <run>.PTM.SiteProbability`, `[n] <run>.PTM.Quantity` |
+
+Three things are specific to Spectronaut exports and are handled automatically:
+
+* files written on a computer with a European locale are **semicolon-separated with decimal
+  commas** (`60441,39`); DiffPTM detects this;
+* missing values are written `Filtered`;
+* a site of a protein group is listed **once per accession** (`A0A024QZX5`, `A0A087X1N8`,
+  `P35237` for the three isoforms of SERPINB6) with identical quantities. The processing
+  step merges these rows (*Merge site rows repeated for several protein accessions*), which
+  keeps the reviewed accession and the union of accessions for matching. Without it, the
+  same measurement is tested several times.
+
+The `[n] ` prefix and the `.PTM.Quantity` suffix are removed from the run names, which then
+read like `Phospho-01_NS_R1`. The run names of the two reports differ by their prefix
+(`Phospho-01_` vs `Proteome-01_`): the design step removes it.
+
+The example files `inst/extdata/formats/Spectronaut/` reproduce this layout (semicolons,
+decimal commas, `Filtered`, one protein group with two accessions).
+
+## In the interface
+
+1. **Import**: software *Spectronaut*; upload the protein pivot report and the PTM site pivot
+   report (`.csv`, `.tsv` or `.xls` export).
+2. **Design**: *Proteome samples: regex* `^Proteome-\d+_(.+)$`, *PTM samples: regex*
+   `^Phospho-\d+_(.+)$`. The preview reports the number of names shared by both tables. If
+   some runs were re-acquired with a suffix (`..._R1_Octobre`), extend the pattern:
+   `^Phospho-\d+_(.+?)(?:_Octobre)?$`. Then *Pre-fill from sample names* with condition
+   `-1` (everything but the replicate token) and *Apply design*.
+3. **Processing**: keep *Merge site rows repeated for several protein accessions* ticked.
+   Look at *Features observed per sample*: runs with far fewer sites than the others (failed
+   enrichments) should be removed by clearing their condition in step 2.
+4. **Statistics**, **Results**, **Download** as in the overview vignette.
+
+## The same analysis in R
+
+```{r import}
+library(DiffPTM)
+prot <- import_protein(fx("Spectronaut", "PivotReport_Proteomes.csv"), "Spectronaut")
+ptm  <- import_ptm(fx("Spectronaut", "PivotReport_Phospho.csv"), "Spectronaut")
+colnames(prot$intensity)
+head(ptm$meta[, c("feature_id", "label", "protein_ids", "residue", "position", "localization_prob", "multiplicity")])
+```
+
+Give both tables the same sample names (the capture group of the pattern):
+
+```{r rename}
+prot <- rename_samples(prot, "^Proteome-\\d+_(.+)$")
+ptm  <- rename_samples(ptm,  "^Phospho-\\d+_(.+)$")
+colnames(prot$intensity)
+```
+
+Design, processing (with the merge of redundant rows), statistics:
+
+```{r analysis}
+ann <- guess_annotation(colnames(prot$intensity), "[_]", condition_pos = "-1", subject_pos = "2")
+ann
+x <- new_ptm_experiment(prot, ptm, annotation = list(protein = ann, ptm = ann)) |>
+  merge_redundant_ptm() |> filter_localization(0.75) |> filter_min_observed(min_n = 2) |>
+  normalise(method = "global_median") |> match_ptm_to_protein("id")
+cat(x$log, sep = "\n")
+res <- run_methods(x, make_contrasts(x, "vs_reference", reference = "control"), "limma", pi0_method = "bh")
+res$label <- x$ptm$meta$label[match(res$feature_id, x$ptm$meta$feature_id)]
+table(res$analysis, significant = res$adj_pvalue < 0.05)
+```
+
+```{r qc, fig.height = 4}
+plot_detected_per_sample(x, "ptm")
+```
+
+```{r volcano, fig.height = 5}
+plot_volcano(subset(res, analysis == "ptm_DPU"), fdr = 0.05, title = "PTM usage, treated vs control")
+```
+
+## Checking the quantity scale
+
+Spectronaut can export quantities on different scales depending on the report settings. After
+import, the intensity distributions should look like log2 intensities of a mass spectrometer
+(typically 10–30 for label-free data); a distribution squeezed near zero with many identical
+values indicates an export of normalised ratios or of a quantity floored at 1, in which case
+re-export the report with raw quantities.
+
+```{r dist, fig.height = 3.5}
+plot_intensity_distributions(x, "ptm")
+```

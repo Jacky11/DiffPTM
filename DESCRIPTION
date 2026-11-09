@@ -1,0 +1,58 @@
+Package: DiffPTM
+Type: Package
+Title: Differential Abundance and Usage Analysis of Post-Translational Modifications
+Version: 0.0.1
+Authors@R: c(
+    person("Quentin", "Giai Gianetto", email = "quentin.giaigianetto@pasteur.fr", role = c("aut", "cre")),
+    person("Zina", "Salhi", role = "aut")
+    )
+Description: Quality control, normalisation, imputation and differential analysis of
+    PTM-enriched (phospho, ubiquitin, acetyl, ...) and total-proteome quantitative
+    proteomics data. Separates changes in PTM abundance from changes in PTM usage
+    (i.e. corrected for the parent protein) with three interchangeable statistical
+    methods (limma single model, MSstatsPTM, msqrob2PTM) run on one common data model,
+    and provides a Shiny interface with reproducible reports.
+License: GPL-3
+Encoding: UTF-8
+LazyData: false
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends:
+    R (>= 4.2)
+Imports:
+    cli,
+    data.table,
+    DT,
+    ggplot2,
+    limma,
+    methods,
+    officer,
+    openxlsx,
+    shiny (>= 1.7),
+    stats,
+    utils
+Suggests:
+    AhoCorasickTrie,
+    Biostrings,
+    cp4p,
+    ggdendro,
+    markdown,
+    readxl,
+    ggridges,
+    ggrepel,
+    imp4p,
+    knitr,
+    msqrob2,
+    MSstatsPTM,
+    plotly,
+    QFeatures,
+    rmarkdown,
+    rvg,
+    SummarizedExperiment,
+    sva,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+biocViews: Proteomics, MassSpectrometry, DifferentialExpression, Software, ShinyApps
+URL: https://github.com/Jacky11/DiffPTM
+BugReports: https://github.com/Jacky11/DiffPTM/issues

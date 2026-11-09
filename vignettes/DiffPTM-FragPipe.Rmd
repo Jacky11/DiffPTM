@@ -1,0 +1,101 @@
+---
+title: "DiffPTM with FragPipe"
+author: "DiffPTM"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{DiffPTM with FragPipe}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+source("_setup.R")
+```
+
+FragPipe writes different tables for label-free and for TMT experiments; DiffPTM reads both.
+
+## Label-free (IonQuant)
+
+| Table | File | Columns DiffPTM reads |
+|---|---|---|
+| total proteome | `combined_protein.tsv` of the proteome workflow | `Protein ID`, `Gene`, `<sample> MaxLFQ Intensity` (preferred) or `<sample> Intensity` |
+| PTM | `combined_modified_peptide.tsv` of the enrichment workflow (LFQ-phospho, ...) | `Protein ID`, `Gene`, `Peptide Sequence`, `Modified Sequence`, `Assigned Modifications`, `Start`, `Probability`, `<sample> MaxLFQ Intensity` |
+
+Sites are read from `Assigned Modifications` (`5S(79.9663), 9T(79.9663)`: positions within
+the peptide, converted to protein positions with `Start`); fixed and label modifications
+(57.0215, 15.9949, 42.0106, 229.1629, 304.2071) are ignored. Several peptidoforms can carry the
+same site (missed cleavages, additional modifications): *Collapse peptidoforms to sites* in
+the processing step sums them.
+
+The sample names are the experiment names given in the FragPipe workflow (`control_1`, ...).
+When the enriched and proteome runs were run in two separate workflows with the same
+experiment names, nothing needs renaming.
+
+## TMT (TMT-Integrator)
+
+| Table | File | Columns DiffPTM reads |
+|---|---|---|
+| total proteome | `abundance_protein_MD.tsv` (or `_None.tsv`, `_GN.tsv`) | `Index` / `ProteinID`, samples |
+| PTM | `abundance_single-site_MD.tsv` (or `_None.tsv`) | `Index` (`P12345_S123`), `Gene`, `ProteinID`, `Peptide`, `MaxPepProb`, samples |
+
+TMT-Integrator reports **log2 ratios to the reference channel plus the reference intensity**,
+i.e. values already on the log2 scale: untick *Intensities are raw* in the import step
+(`log2_transform = FALSE` in R). DiffPTM warns when values never exceed 64 and skips the
+transformation. The sample names are the channel annotations of the TMT-Integrator
+annotation file. Give the plex of each sample in the `mixture` column of the design; the
+single model then fits one mixture effect per fraction.
+
+The example files `inst/extdata/formats/FragPipe_LFQ/` and `FragPipe_TMT/` reproduce the two
+layouts.
+
+## In the interface
+
+1. **Import**: software *FragPipe*; upload the two tables; untick *Intensities are raw* for
+   TMT-Integrator tables.
+2. **Design**: *Pre-fill from sample names* (condition = `-1`); for TMT fill the `mixture`
+   column.
+3. **Processing**: defaults; tick *Collapse peptidoforms to sites* for
+   `combined_modified_peptide.tsv`.
+4. **Statistics**, **Results**, **Download** as in the overview vignette.
+
+## The same analysis in R, label-free
+
+```{r lfq}
+library(DiffPTM)
+prot <- import_protein(fx("FragPipe_LFQ", "combined_protein.tsv"), "FragPipe")
+ptm  <- import_ptm(fx("FragPipe_LFQ", "combined_modified_peptide.tsv"), "FragPipe")
+head(ptm$meta[, c("feature_id", "label", "stripped_sequence", "residue", "position", "localization_prob", "ptm_type")])
+ann <- guess_annotation(colnames(prot$intensity), "[_]", condition_pos = "-1")
+x <- new_ptm_experiment(prot, ptm, annotation = list(protein = ann, ptm = ann)) |>
+  filter_localization(0.75) |> filter_min_observed(min_n = 2) |>
+  normalise(method = "global_median") |> match_ptm_to_protein("id")
+res <- run_methods(x, make_contrasts(x, "vs_reference", reference = "control"), "limma", pi0_method = "bh")
+table(res$analysis, significant = res$adj_pvalue < 0.05)
+```
+
+## The same analysis in R, TMT
+
+```{r tmt}
+prot <- import_protein(fx("FragPipe_TMT", "abundance_protein_MD.tsv"), "FragPipe", log2_transform = FALSE)
+ptm  <- import_ptm(fx("FragPipe_TMT", "abundance_single-site_MD.tsv"), "FragPipe", log2_transform = FALSE)
+range(prot$intensity, na.rm = TRUE)          # log2 scale already
+ann <- guess_annotation(colnames(prot$intensity), "[_]", condition_pos = "-1")
+ann$mixture <- "plex1"                      # one 6-plex here; give the plex of each channel in a multi-plex design
+x <- new_ptm_experiment(prot, ptm, annotation = list(protein = ann, ptm = ann)) |>
+  filter_localization(0.75) |> filter_min_observed(min_n = 2) |>
+  normalise(method = "global_median") |> match_ptm_to_protein("id")
+res <- run_methods(x, make_contrasts(x, "vs_reference", reference = "control"), "limma", pi0_method = "bh")
+res$label <- x$ptm$meta$label[match(res$feature_id, x$ptm$meta$feature_id)]
+table(res$analysis, significant = res$adj_pvalue < 0.05)
+```
+
+```{r volcano, fig.height = 5}
+plot_volcano(subset(res, analysis == "ptm_DPU"), fdr = 0.05, title = "PTM usage, treated vs control (TMT)")
+```
+
+Global median normalisation (every channel centred on the same median) is the usual choice
+for TMT ratios; per-condition centering assumes that most sites do not change between
+conditions within a plex.

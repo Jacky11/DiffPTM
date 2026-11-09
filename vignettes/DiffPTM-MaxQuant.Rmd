@@ -1,0 +1,110 @@
+---
+title: "DiffPTM with MaxQuant"
+author: "DiffPTM"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{DiffPTM with MaxQuant}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+source("_setup.R")
+```
+
+## Files
+
+| Table | File in the `combined/txt` folder | What DiffPTM reads |
+|---|---|---|
+| total proteome | `proteinGroups.txt` | `Majority protein IDs`, `Gene names`, `LFQ intensity <run>` (or `Intensity <run>`, or `Reporter intensity corrected <channel> <run>` for TMT), `Reverse`, `Potential contaminant`, `Only identified by site` |
+| PTM | `Phospho (STY)Sites.txt`, `GlyGly (K)Sites.txt`, `Acetyl (K)Sites.txt`, ... | `Proteins`, `Gene names`, `Position`, `Amino acid`, `Sequence window`, `Localization prob`, `Intensity <run>___1/2/3`, `Reverse`, `Potential contaminant` |
+
+The site tables carry one intensity column per run and per **multiplicity** (`___1`:
+singly modified peptides, `___2`: doubly, `___3`: triply). DiffPTM creates one feature per
+multiplicity by default (the label then reads `GENE S123 (x2)`); the import step also offers
+to keep `___1` only or to sum the three.
+
+In a **combined search** (the usual MaxQuant setting, where the proteome and the enriched runs
+are searched together, the enriched runs being given a prefix in the experiment name) the site
+table lists intensity columns for *all* runs, including the proteome runs where sites are
+rarely quantified, and `proteinGroups.txt` has LFQ intensities for the proteome runs only.
+The design step handles this, see below.
+
+The example files `inst/extdata/formats/MaxQuant/` (`proteinGroups.txt`, `Phospho_STY_Sites.txt`, the site table renamed without spaces and parentheses) reproduce this layout for a simulated
+experiment with two conditions × three samples, proteome runs `control_1 ... treated_3` and
+enriched runs `Phospho_control_1 ... Phospho_treated_3`.
+
+## In the interface
+
+1. **Import**: software *MaxQuant*; upload `proteinGroups.txt` and `Phospho (STY)Sites.txt`.
+2. **Design**: in *PTM samples: regex*, enter `^Phospho_(.+)$`. The enriched runs are kept and
+   renamed `control_1 ...`, the proteome runs listed in the site table are dropped, and the
+   preview reports "6 sample names shared by both tables". Click *Pre-fill from sample names*
+   (condition = `-1`, all tokens but the last) and *Apply design*.
+3. **Processing**: defaults (reverse hits and contaminants removed, localization ≥ 0.75,
+   two observed values per group, per-condition median centering, no imputation, matching
+   by identifier). Run.
+4. **Statistics**: single model, contrasts *each condition vs a reference* (control), FDR 5 %.
+5. **Results** and **Download**.
+
+## The same analysis in R
+
+```{r import}
+library(DiffPTM)
+prot <- import_protein(fx("MaxQuant", "proteinGroups.txt"), "MaxQuant")
+ptm  <- import_ptm(fx("MaxQuant", "Phospho_STY_Sites.txt"), "MaxQuant", multiplicity = "expand")
+colnames(prot$intensity)
+colnames(ptm$intensity)
+```
+
+The proteome has six runs, the site table twelve. Keep the enriched runs and name them after
+the proteome runs:
+
+```{r rename}
+ptm <- rename_samples(ptm, "^Phospho_(.+)$")
+colnames(ptm$intensity)
+head(ptm$meta[, c("feature_id", "label", "gene", "residue", "position", "localization_prob", "multiplicity")])
+```
+
+Design, processing, statistics:
+
+```{r analysis}
+ann <- guess_annotation(colnames(prot$intensity), "[_]", condition_pos = "-1")   # control_1 -> control
+ann
+x <- new_ptm_experiment(prot, ptm, annotation = list(protein = ann, ptm = ann)) |>
+  filter_flagged() |> filter_localization(0.75) |> filter_min_observed(min_n = 2) |>
+  normalise(method = "global_median") |> match_ptm_to_protein("id")
+x
+ctr <- make_contrasts(x, "vs_reference", reference = "control")
+res <- run_methods(x, ctr, "limma", pi0_method = "bh")
+res$label <- x$ptm$meta$label[match(res$feature_id, x$ptm$meta$feature_id)]
+table(res$analysis, significant = res$adj_pvalue < 0.05)
+```
+
+```{r plots, fig.height = 5}
+plot_volcano(subset(res, analysis == "ptm_DPU"), fdr = 0.05, title = "PTM usage, treated vs control")
+parent <- setNames(x$ptm$meta$matched_protein, x$ptm$meta$feature_id)
+plot_fc_comparison(subset(res, analysis == "ptm_DPA"), subset(res, analysis == "protein_DPA"), parent,
+                   subset(res, analysis == "ptm_DPU"), fdr = 0.05)
+```
+
+The four sites in the lower left are *compensated*: their intensity does not change, their
+protein increases, so their usage decreases; an analysis of site intensities alone would miss
+them.
+
+## TMT data
+
+For TMT experiments quantified by MaxQuant, the reporter columns `Reporter intensity corrected
+<channel> <experiment>` are used for both tables (when `LFQ intensity` columns are absent).
+Give the mixture of each channel in the `mixture` column of the design so that it enters the
+models as a batch effect.
+
+## Reports
+
+```{r, eval = FALSE}
+write_results_xlsx(x, res, "DiffPTM_results.xlsx")
+cat(methods_paragraph(x, "limma"))
+```
