@@ -46,7 +46,7 @@
 #' Complete pairs: with the consensus correlation, a sample in which only the site or only
 #' the protein is quantified would still enter the fit, and the shared correlation would let
 #' this unpaired value inform the other component; in the benchmark this made the
-#' all-observation consensus fit (default of DiffPTM <= 2.0.0) anti-conservative.
+#' all-observation consensus fit (default of earlier development versions of DiffPTM) anti-conservative.
 #' `complete_pairs = TRUE` (default) sets unpaired values to `NA` before fitting the consensus
 #' model, so that only samples with both values enter. The per-site paired model ignores
 #' unpaired values by construction.
@@ -62,7 +62,7 @@
 #' @param pair_by_sample see Details.
 #' @param complete_pairs restrict the consensus-correlation DPU fit (`blocking = "random"`) to
 #'   samples in which both the site and its protein are quantified (default; see Details). `FALSE` gives the
-#'   all-observation consensus fit of DiffPTM <= 2.0.0, which was anti-conservative for sites
+#'   all-observation consensus fit of earlier development versions of DiffPTM, which was anti-conservative for sites
 #'   with unpaired values.
 #' @param moderate use empirical Bayes variance moderation (`limma::eBayes`; default). With
 #'   `FALSE`, ordinary t-statistics are computed from each feature's own residual variance
