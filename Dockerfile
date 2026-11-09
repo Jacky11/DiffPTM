@@ -1,4 +1,4 @@
-# DiffPTM 2 — deployment image (ShinyProxy / standalone)
+# DiffPTM — deployment image (ShinyProxy / standalone)
 FROM rocker/r-ver:4.4.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

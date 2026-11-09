@@ -1,7 +1,7 @@
 # DiffPTM
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/GITHUB_USER/DiffPTM/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/GITHUB_USER/DiffPTM/actions/workflows/R-CMD-check.yaml)
+[![R-CMD-check](https://github.com/Jacky11/DiffPTM/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/Jacky11/DiffPTM/actions/workflows/R-CMD-check.yaml)
 [![License: GPL-3](https://img.shields.io/badge/license-GPL--3-blue.svg)](LICENSE.md)
 <!-- badges: end -->
 
@@ -19,8 +19,8 @@ correct-then-model (msqrob2PTM) — and reports diagnostics that tell which one 
 support. Everything is available from a graphical interface that runs on your own computer
 (no data leave it) and from R functions.
 
-> **Development version.** DiffPTM 2 is under active development and the accompanying article
-> is in preparation. Functions and defaults may still change; see [NEWS.md](NEWS.md).
+> **Development version (0.0.1).** DiffPTM is under active development and the accompanying
+> article is in preparation. Functions and defaults may still change; see [NEWS.md](NEWS.md).
 
 ## Installation
 
@@ -29,7 +29,7 @@ DiffPTM needs R ≥ 4.2. Some dependencies come from Bioconductor, so install th
 
 ```r
 install.packages(c("BiocManager", "remotes"))
-BiocManager::install("GITHUB_USER/DiffPTM")
+BiocManager::install("Jacky11/DiffPTM")
 ```
 
 This installs DiffPTM and its required dependencies. The optional packages that add the
@@ -46,7 +46,7 @@ install.packages(c("imp4p", "cp4p", "AhoCorasickTrie", "rvg", "plotly", "ggrepel
 To install with the vignettes (slower):
 
 ```r
-BiocManager::install("GITHUB_USER/DiffPTM", build_vignettes = TRUE, dependencies = TRUE)
+BiocManager::install("Jacky11/DiffPTM", build_vignettes = TRUE, dependencies = TRUE)
 ```
 
 Without R: a Docker image serves the interface on <http://localhost:3838>
@@ -132,7 +132,7 @@ If you use DiffPTM, please cite the package (`citation("DiffPTM")`); the article
 
 ## Contributing and support
 
-Bug reports and feature requests: [issues](https://github.com/GITHUB_USER/DiffPTM/issues).
+Bug reports and feature requests: [issues](https://github.com/Jacky11/DiffPTM/issues).
 Please include the output of `sessionInfo()` and, if possible, a small example that
 reproduces the problem.
 
