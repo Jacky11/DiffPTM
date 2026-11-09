@@ -71,19 +71,29 @@ phosphosites, two conditions with four samples each) with its design, to try the
 
 ## 2. Design
 
-Every sample needs a **condition**. Two ways to fill the tables: *Pre-fill from sample
-names*, which cuts the names at the separator and uses the chosen tokens (`-1` means
-everything but the last token, i.e. the name without its replicate number), or upload an
-annotation table (`sample`, `condition`, optional `factor`, `subject`, `mixture`). Cells
-can be edited by double-clicking. Samples left without a condition are excluded.
+The Design page proposes a design as soon as the data are imported (`suggest_design()`). Its
+rules use the data and the structure of the run names, not particular words, so that they apply
+to MaxQuant, Spectronaut and DIA-NN exports alike; the page says in plain words what it did:
 
-**Sample names must match between the two tables for the paired analysis.** When the
-PTM and proteome runs of the same biological sample have different names, which is the rule
-(`Phospho_mock_1` and `mock_1` in a combined MaxQuant search; `Phospho-01_NS_R1` and
-`Proteome-01_NS_R1` in Spectronaut), give each table a regular expression whose capture
-group is the common name. Samples that do not match the expression are dropped, which also
-removes the proteome runs that a MaxQuant site table lists alongside the enriched runs. The
-preview under the fields tells how many samples are kept and how many names are shared.
+* runs without any quantified value are not used (a combined MaxQuant search lists every run in
+  every table, including the runs of other enrichments);
+* when both tables list the same runs (one search of enriched and total runs), the PTM-enriched
+  runs are those that quantify many more sites than the others;
+* a PTM run and a proteome run are paired when their names are the same once the parts that only
+  mark the fraction are removed (`Phospho_mock_1` / `mock_1`; `P_R1-A` / `T_R1-A`;
+  `Phospho-01_NS_R1` / `Proteome-01_NS_R1`; `..._Phos_Ctrl_01.raw` / `..._FP_Ctrl_01.raw`), or,
+  failing that, when their names are clearly the most similar (`..._R1_Octobre` / `..._R1`).
+  Paired runs receive the same **sample** name, which is what the usage test pairs on;
+* each condition is read from the sample name without its replicate number, wherever it is
+  (`mock_24h_1` -> `mock_24h`, `R1-A` -> `A`, `01_NS_R1` -> `NS`); MaxQuant SILAC channels become
+  samples `L_<experiment>`, `H_<experiment>` with conditions `L` and `H`.
+
+Each table lists the **run** (column of the imported file), the **sample** name and the
+**condition**; double-click a cell to change it (an empty condition means the run is not used).
+A summary gives the number of proteome, PTM and paired samples per condition. Click
+**Apply design** when it is right. *Advanced options*: renaming in bulk with a regular expression,
+reading conditions from other parts of the names, a second factor and a subject, and the upload
+of an annotation table (`run` or `sample`, `condition`, optional `factor`, `subject`, `mixture`).
 
 Optional columns: a **second factor** (time point, batch; contrasts are built within each
 level and ComBat can use it), a **subject** for paired designs across conditions (used as a
