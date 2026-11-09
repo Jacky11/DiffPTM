@@ -46,8 +46,8 @@ benchmark);
 \code{sqrt(max(V_obs - V_0, 0)) / 2}, where \code{V_obs} is the variance over sites of the observed
 \code{log(s_S^2 / s_P^2)} and \code{V_0} its expectation when every site has the same variance ratio.
 For a site with \code{nu} residual degrees of freedom and residual correlation \code{r} between site
-and protein, the sampling variance of the log ratio is \code{2 * trigamma(nu / 2)} when \code{r = 0}
-and smaller when \code{r != 0} (the two variances then share sampling error);
+and protein, the sampling variance of the log ratio is \code{2 * trigamma(nu / 2)} when r = 0
+and smaller when r is not 0 (the two variances then share sampling error);
 \code{V_0} is the mean over sites of this variance, computed by Monte Carlo (\code{n_mc} draws of
 two correlated chi-squared sums with \code{nu} degrees of freedom and correlation \code{rho_obs_pooled},
 with a fixed internal seed that leaves the user's random stream unchanged). The factor 1/2
