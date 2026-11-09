@@ -54,7 +54,7 @@ effect of moderation from that of pairing.}
 
 \item{complete_pairs}{restrict the consensus-correlation DPU fit (\code{blocking = "random"}) to
 samples in which both the site and its protein are quantified (default; see Details). \code{FALSE} gives the
-all-observation consensus fit of DiffPTM <= 2.0.0, which was anti-conservative for sites
+all-observation consensus fit of earlier development versions of DiffPTM, which was anti-conservative for sites
 with unpaired values.}
 
 \item{...}{ignored (lets \code{\link[=run_methods]{run_methods()}} pass method-specific arguments).}
@@ -109,7 +109,7 @@ replicates per group when they hold.
 Complete pairs: with the consensus correlation, a sample in which only the site or only
 the protein is quantified would still enter the fit, and the shared correlation would let
 this unpaired value inform the other component; in the benchmark this made the
-all-observation consensus fit (default of DiffPTM <= 2.0.0) anti-conservative.
+all-observation consensus fit (default of earlier development versions of DiffPTM) anti-conservative.
 \code{complete_pairs = TRUE} (default) sets unpaired values to \code{NA} before fitting the consensus
 model, so that only samples with both values enter. The per-site paired model ignores
 unpaired values by construction.

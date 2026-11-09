@@ -27,7 +27,7 @@ every feature of the assay.
 \code{equalizeMedians} and MSstatsTMT's global normalisation. A shift of a whole assay between
 conditions (a difference of loading or enrichment efficiency, or a genuine global change)
 is removed.
-\item \code{"median"}: per-condition median centering (the default of DiffPTM <= 2.0.0) — within each
+\item \code{"median"}: per-condition median centering (the default of earlier development versions of DiffPTM) — within each
 group, sample medians are computed on features without missing values in that group and
 each sample is shifted to the mean of the group medians, so that differences between groups
 are preserved, including a difference of mean loading between conditions. For the usage

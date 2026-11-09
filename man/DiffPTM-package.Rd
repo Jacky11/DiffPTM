@@ -6,22 +6,22 @@
 \alias{DiffPTM-package}
 \title{DiffPTM: Differential Abundance and Usage Analysis of Post-Translational Modifications}
 \description{
-Quality control, normalisation, imputation and differential analysis of PTM-enriched (phospho, ubiquitin, acetyl, ...) and total-proteome quantitative proteomics data. Separates changes in PTM abundance (DPA) from changes in PTM usage (DPU, i.e. corrected for the parent protein) with three interchangeable statistical methods (limma single model, MSstatsPTM, msqrob2PTM) run on one common data model, and provides a Shiny interface with reproducible reports.
+Quality control, normalisation, imputation and differential analysis of PTM-enriched (phospho, ubiquitin, acetyl, ...) and total-proteome quantitative proteomics data. Separates changes in PTM abundance from changes in PTM usage (i.e. corrected for the parent protein) with three interchangeable statistical methods (limma single model, MSstatsPTM, msqrob2PTM) run on one common data model, and provides a Shiny interface with reproducible reports.
 }
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/<org>/DiffPTM}
-  \item Report bugs at \url{https://github.com/<org>/DiffPTM/issues}
+  \item \url{https://github.com/Jacky11/DiffPTM}
+  \item Report bugs at \url{https://github.com/Jacky11/DiffPTM/issues}
 }
 
 }
 \author{
-\strong{Maintainer}: Quentin Giai Gianetto \email{quentin2g@yahoo.fr}
+\strong{Maintainer}: Quentin Giai Gianetto \email{quentin.giaigianetto@pasteur.fr}
 
 Authors:
 \itemize{
-  \item Zina
+  \item Zina Salhi
 }
 
 }

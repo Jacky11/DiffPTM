@@ -65,8 +65,8 @@ in which case \code{"random"} (consensus) gains degrees of freedom at little ris
 }
 
 The thresholds come from the simulations of the DiffPTM benchmark: the consensus model was
-calibrated when the variance ratio was homogeneous over sites (spread 0.24) and
-anti-conservative when it varied as in the real datasets (spread 0.6-0.7).
+calibrated when the variance ratio was homogeneous over sites (estimated spread 0.01-0.12)
+and anti-conservative when it varied as in the real datasets (spread 0.4-0.75; real data 0.54-0.99).
 }
 \examples{
 sim <- simulate_ptm_features(n_rep = 3, n_proteins = 300, n_sites = 200, seed = 1)
