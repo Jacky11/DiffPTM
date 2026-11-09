@@ -258,6 +258,7 @@ import_protein <- function(path, software = "MaxQuant", spec = NULL, quant_patte
                      stringsAsFactors = FALSE)
   for (f in spec$flags) if (f %in% names(d)) meta[[make.names(f)]] <- !is.na(d[[f]]) & nzchar(as.character(d[[f]])) & as.character(d[[f]]) != "FALSE"
   colnames(m) <- clean_sample_names(colnames(m), software)
+  if (software == "MaxQuant") m <- maxquant_label_samples(m)
   g <- ifelse(is.na(meta$gene) | !nzchar(meta$gene), meta$protein_ids, meta$gene)
   meta$label <- vapply(strsplit(g, spec$sep, fixed = TRUE), function(t) if (length(t)) trimws(t[1]) else "", "")
   new_assay(m, meta, log2_transform = log2_transform, sep = spec$sep)
@@ -350,6 +351,7 @@ import_ptm <- function(path, software = "MaxQuant", spec = NULL, quant_pattern =
     meta$multiplicity <- getcol("multiplicity")
   }
   colnames(m) <- clean_sample_names(colnames(m), software)
+  if (software == "MaxQuant") m <- maxquant_label_samples(m)
   meta$label <- site_label(meta, sep = spec$sep)
   new_assay(m, meta, log2_transform = log2_transform, sep = spec$sep)
 }
@@ -373,6 +375,31 @@ site_label <- function(meta, sep = ";") {
   lab <- ifelse(!is.na(mult) & mult > 1, sprintf("%s (x%d)", lab, mult), lab)
   lab[!nzchar(trimws(lab))] <- meta$feature_id[!nzchar(trimws(lab))]
   lab
+}
+
+#' SILAC samples of a MaxQuant table
+#'
+#' With SILAC labels, MaxQuant writes `Intensity L 3`, `Intensity H 3` (label x experiment), but
+#' also `Intensity L` and `Intensity H` (labels summed over experiments) and `Intensity 3`
+#' (labels summed within experiment 3). Each label of each experiment is a sample: the
+#' label x experiment columns are kept and named `L_3`, `H_3`, ...; when they hold no value (as
+#' in the protein table of some searches), the per-label columns `L`, `H` are kept instead.
+#' Label-free and TMT tables are returned unchanged.
+#' @param m matrix whose column names are the sample parts of the MaxQuant column names.
+#' @keywords internal
+maxquant_label_samples <- function(m) {
+  s <- colnames(m)
+  lab <- grepl("^[LMH] .+", s)
+  if (!any(lab) && !any(s %in% c("L", "M", "H"))) return(m)
+  q <- function(cols) sum(!is.na(m[, cols, drop = FALSE]) & m[, cols, drop = FALSE] != 0)
+  if (any(lab) && q(s[lab]) > 0) {
+    keep <- s[lab]; new <- sub("^([LMH]) (.+)$", "\\1_\\2", keep)
+  } else {
+    keep <- s[s %in% c("L", "M", "H")]; new <- keep
+  }
+  if (!length(keep)) return(m)
+  m <- m[, keep, drop = FALSE]; colnames(m) <- new
+  m
 }
 
 #' Tidy sample names produced by a given software

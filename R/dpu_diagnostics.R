@@ -19,8 +19,8 @@
 #'   `sqrt(max(V_obs - V_0, 0)) / 2`, where `V_obs` is the variance over sites of the observed
 #'   `log(s_S^2 / s_P^2)` and `V_0` its expectation when every site has the same variance ratio.
 #'   For a site with `nu` residual degrees of freedom and residual correlation `r` between site
-#'   and protein, the sampling variance of the log ratio is `2 * trigamma(nu / 2)` when `r = 0`
-#'   and smaller when `r != 0` (the two variances then share sampling error);
+#'   and protein, the sampling variance of the log ratio is `2 * trigamma(nu / 2)` when r = 0
+#'   and smaller when r is not 0 (the two variances then share sampling error);
 #'   `V_0` is the mean over sites of this variance, computed by Monte Carlo (`n_mc` draws of
 #'   two correlated chi-squared sums with `nu` degrees of freedom and correlation `rho_obs_pooled`,
 #'   with a fixed internal seed that leaves the user's random stream unchanged). The factor 1/2
