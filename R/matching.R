@@ -9,7 +9,7 @@
 #' * `"sequence"`: the stripped peptide sequence is searched in the protein sequences of a
 #'   FASTA file (Aho-Corasick when `AhoCorasickTrie` is installed, fixed `grepl` loop
 #'   otherwise); the accession(s) found are then mapped to proteome rows by ID. This is the
-#'   strategy recommended by Wolski et al. (MiMB 2027, §1.6) because it bypasses differences
+#'   strategy recommended by Wolski et al. (submitted to Methods Mol Biol, §1.6) because it bypasses differences
 #'   in protein inference between the PTM and total-proteome searches.
 #'
 #' When a PTM feature maps to several quantified protein rows, the parent-protein

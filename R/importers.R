@@ -261,7 +261,9 @@ import_protein <- function(path, software = "MaxQuant", spec = NULL, quant_patte
   if (software == "MaxQuant") m <- maxquant_label_samples(m)
   g <- ifelse(is.na(meta$gene) | !nzchar(meta$gene), meta$protein_ids, meta$gene)
   meta$label <- vapply(strsplit(g, spec$sep, fixed = TRUE), function(t) if (length(t)) trimws(t[1]) else "", "")
-  new_assay(m, meta, log2_transform = log2_transform, sep = spec$sep)
+  a <- new_assay(m, meta, log2_transform = log2_transform, sep = spec$sep)
+  a$source <- file_source(path, software)
+  a
 }
 
 #' Import a PTM table (sites or modified peptides)
@@ -353,7 +355,9 @@ import_ptm <- function(path, software = "MaxQuant", spec = NULL, quant_pattern =
   colnames(m) <- clean_sample_names(colnames(m), software)
   if (software == "MaxQuant") m <- maxquant_label_samples(m)
   meta$label <- site_label(meta, sep = spec$sep)
-  new_assay(m, meta, log2_transform = log2_transform, sep = spec$sep)
+  a <- new_assay(m, meta, log2_transform = log2_transform, sep = spec$sep)
+  a$source <- file_source(path, software)
+  a
 }
 
 #' Short display label of a PTM feature: gene (or first accession), residue and position
@@ -487,3 +491,18 @@ expand_multiplicity <- function(m, meta, suffix = "___([123])$", quant_pattern, 
 }
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
+
+#' Name, size and modification date of an input file, for the Methods paragraph
+#' @param path file path (or anything else, which gives `NULL`).
+#' @param software software that produced it.
+#' @param name,size,modified override the values read from the file (the interface passes the
+#'   name, size and modification date of the file on the user's computer, as the uploaded copy
+#'   has another name and date).
+#' @return a one-row data frame, or `NULL`.
+#' @keywords internal
+file_source <- function(path, software = NA_character_, name = NULL, size = NULL, modified = NULL) {
+  if (!is.character(path) || length(path) != 1 || !file.exists(path)) return(NULL)
+  data.frame(name = name %||% basename(path), size = size %||% file.size(path),
+             modified = modified %||% file.mtime(path), software = software, imported = Sys.time(),
+             stringsAsFactors = FALSE)
+}

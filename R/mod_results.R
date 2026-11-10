@@ -20,7 +20,7 @@ mod_results_ui <- function(id) {
     ),
     shiny::h4("Significant features"), DT::DTOutput(ns("table")),
     shiny::h4("Detection discordance"),
-    shiny::p(class = "step-help", "PTM features observed in at least two samples of a condition in which their protein was not quantified (ptm_without_protein; no usage test is possible, but the modification is there), and the reverse (protein_without_ptm). Computed on the detection pattern before any imputation."),
+    shiny::p(class = "step-help", "PTM features observed in at least two samples of a condition in which their protein was not quantified (ptm_without_protein; no usage test is possible, but the modification is there), and the reverse (protein_without_ptm). Computed on the detection pattern before any imputation (as in Giai Gianetto, Methods Mol Biol 2023, section 3.8)."),
     shiny::fluidRow(shiny::column(3, shiny::selectInput(ns("disc_flag"), "Pattern", c("PTM without protein" = "ptm_without_protein", "Protein without PTM" = "protein_without_ptm", "PTM without any protein in the table" = "no_parent_protein")))),
     DT::DTOutput(ns("discordance"))
   )

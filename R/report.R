@@ -7,32 +7,44 @@
 #' @param methods methods used (for citations).
 #' @param blocking the `blocking` option of the usage analysis (`"auto"`, the per-site paired
 #'   model, by default; `"random"` for the consensus single model; `"none"` for the unpaired one).
+#' @param references append the full references cited in the paragraph.
 #' @export
-methods_paragraph <- function(x, methods = "limma", blocking = "auto") {
+methods_paragraph <- function(x, methods = "limma", blocking = "auto", references = TRUE) {
   ver <- function(p) tryCatch(as.character(utils::packageVersion(p)), error = function(e) "n/a")
   cites <- c(limma = sprintf("limma v%s (Ritchie et al., 2015)", ver("limma")),
              msstatsptm = sprintf("MSstatsPTM v%s (Kohler et al., 2023)", ver("MSstatsPTM")),
              msqrob2ptm = sprintf("msqrob2PTM v%s (Demeulemeester et al., 2024)", ver("msqrob2")))
-  f <- x$files
-  inputs <- if (!is.null(f) && all(c("protein", "ptm") %in% names(f)))
-    sprintf("Input files: total proteome table %s and PTM table %s%s%s. ", f[["protein"]], f[["ptm"]],
-            if ("software" %in% names(f)) sprintf(" (%s)", f[["software"]]) else "",
-            if ("fasta" %in% names(f)) sprintf("; FASTA %s", f[["fasta"]]) else "") else ""
-  paste0(
-    inputs,
-    "Data were processed with DiffPTM v", ver("DiffPTM"), " (R ", R.version$major, ".", R.version$minor, "). ",
+  imputed <- any(grepl("imp4p", x$log)); cp <- requireNamespace("cp4p", quietly = TRUE)
+  txt <- paste0(
+    input_files_sentence(x),
+    "Data were processed with DiffPTM v", ver("DiffPTM"), " (R ", R.version$major, ".", R.version$minor,
+    "), which extends the workflow of Giai Gianetto (2023) for the quality control, the detection profiles and the ",
+    "differential analysis of PTMs relative to their protein across several biological conditions. ",
     paste(x$log, collapse = " "),
     design_sentence(x),
     " Differential analyses were performed with ", paste(cites[methods], collapse = ", "),
     ".",
-    if ("limma" %in% methods) paste0(" In the single model, site and matched protein intensities were fitted together (component x condition design)",
+    if ("limma" %in% methods) paste0(" In the single model (Giai Gianetto, 2023), site and matched protein intensities were fitted together (component x condition design)",
       if (!is.null(x$ptm$protein_intensity) && setequal(colnames(x$ptm$intensity), colnames(x$ptm$protein_intensity))) switch(blocking,
         random = "; the sample was included as a random effect with a consensus within-sample correlation (limma::duplicateCorrelation; consensus single model), and only samples in which both the site and its protein were quantified entered the usage model (complete pairs)",
         none = "; without a sample term (unpaired single model)",
         "; the sample was included as a fixed effect (per-site paired single model), so that each site's usage test is the paired analysis of its within-sample site-minus-protein differences") else "",
       "; differential usage was tested as the component x condition interaction with moderated t-statistics (robust empirical Bayes).") else "",
-    if (any(grepl("imp4p", x$log))) paste0(" Missing values were imputed with imp4p v", ver("imp4p"), " (Giai Gianetto et al., 2020).") else "",
-    if (requireNamespace("cp4p", quietly = TRUE)) paste0(" P-values were adjusted with a pi0-aware FDR (cp4p v", ver("cp4p"), ", Giai Gianetto et al., 2016).") else " P-values were adjusted with the Benjamini-Hochberg procedure.")
+    if (imputed) paste0(" Missing values were imputed with imp4p v", ver("imp4p"), " (Giai Gianetto et al., 2020).") else "",
+    if (cp) paste0(" P-values were adjusted with a pi0-aware FDR (cp4p v", ver("cp4p"), ", Giai Gianetto et al., 2016).") else " P-values were adjusted with the Benjamini-Hochberg procedure.")
+  if (!references) return(txt)
+  refs <- c(
+    paste0("Giai Gianetto Q, Salhi Z. DiffPTM: differential abundance and usage analysis of post-translational modifications. ",
+           "R package version ", ver("DiffPTM"), ". https://github.com/Jacky11/DiffPTM"),
+    paste0("Giai Gianetto Q. Statistical Analysis of Post-Translational Modifications Quantified by Label-Free Proteomics Across ",
+           "Multiple Biological Conditions with R: Illustration from SARS-CoV-2 Infected Cells. In: Burger T (ed.), Statistical ",
+           "Analysis of Proteomic Data. Methods Mol Biol. 2023;2426:267-302. doi:10.1007/978-1-0716-1967-4_12"),
+    if ("limma" %in% methods) "Ritchie ME, Phipson B, Wu D, Hu Y, Law CW, Shi W, Smyth GK. limma powers differential expression analyses for RNA-sequencing and microarray studies. Nucleic Acids Res. 2015;43:e47. doi:10.1093/nar/gkv007",
+    if ("msstatsptm" %in% methods) "Kohler D, Tsai T-H, Verschueren E, et al. MSstatsPTM: statistical relative quantification of posttranslational modifications in bottom-up mass spectrometry-based proteomics. Mol Cell Proteomics. 2023;22:100477. doi:10.1016/j.mcpro.2022.100477",
+    if ("msqrob2ptm" %in% methods) "Demeulemeester N, G\u00e9belin M, Caldi Gomes L, et al. msqrob2PTM: differential abundance and differential usage analysis of MS-based proteomics data at the posttranslational modification and peptidoform level. Mol Cell Proteomics. 2024;23:100708. doi:10.1016/j.mcpro.2023.100708",
+    if (imputed) "Giai Gianetto Q, Wieczorek S, Cout\u00e9 Y, Burger T. A peptide-level multiple imputation strategy accounting for the different natures of missing values in proteomics data. bioRxiv. 2020. doi:10.1101/2020.05.29.122770",
+    if (cp) "Giai Gianetto Q, Combes F, Ramus C, Bruley C, Cout\u00e9 Y, Burger T. Calibration plot for proteomics: a graphical tool to visually check the assumptions underlying FDR control in quantitative experiments. Proteomics. 2016;16:29-32. doi:10.1002/pmic.201500189")
+  paste0(txt, "\n\nReferences\n", paste0("- ", refs, collapse = "\n"))
 }
 
 #' Write results and QC tables to an Excel workbook
@@ -224,4 +236,23 @@ design_sentence <- function(x) {
     sprintf(" Samples were annotated with a condition (%s) and a second factor (%s); contrasts compared conditions within each level of the second factor.",
             paste(cc, collapse = ", "), paste(unique(stats::na.omit(ann$factor)), collapse = ", "))
   else sprintf(" Samples were annotated with %d conditions (%s).", length(cc), paste(cc, collapse = ", "))
+}
+
+#' Sentence naming the input files, their size and modification date, for the Methods paragraph
+#' @keywords internal
+input_files_sentence <- function(x) {
+  one <- function(src, what) {
+    if (is.null(src) || !nrow(src)) return(NULL)
+    sz <- src$size[1]
+    size <- if (is.na(sz)) "" else if (sz >= 1024^2) sprintf("%.1f MB", sz / 1024^2) else sprintf("%.0f kB", sz / 1024)
+    date <- if (is.na(src$modified[1])) "" else format(as.POSIXct(src$modified[1]), "%Y-%m-%d %H:%M")
+    det <- paste(c(size, if (nzchar(date)) paste("modified", date)), collapse = ", ")
+    sprintf("%s %s%s", what, src$name[1], if (nzchar(det)) sprintf(" (%s)", det) else "")
+  }
+  parts <- c(one(x$protein$source, "total proteome table"), one(x$ptm$source, "PTM table"), one(x$fasta_source, "FASTA"))
+  if (!length(parts)) return("")
+  src <- x$ptm$source %||% x$protein$source
+  sw <- if (!is.null(src) && !is.na(src$software[1])) sprintf(", exported from %s", src$software[1]) else ""
+  imp <- if (!is.null(src) && !is.null(src$imported)) sprintf(" and imported on %s", format(as.POSIXct(src$imported[1]), "%Y-%m-%d")) else ""
+  sprintf("Input files%s%s: %s. ", sw, imp, paste(parts, collapse = "; "))
 }

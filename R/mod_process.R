@@ -2,6 +2,9 @@ mod_process_ui <- function(id) {
   ns <- shiny::NS(id)
   help <- function(...) shiny::p(class = "step-help", ...)
   shiny::tagList(
+    shiny::tags$script(shiny::HTML(sprintf(
+      "$(document).on('change', '#%s', function(e) { var f = e.target.files && e.target.files[0];
+         if (f) Shiny.setInputValue(e.target.id + '_meta', {name: f.name, size: f.size, modified: f.lastModified}); });", ns("fasta")))),
     shiny::h3("Filtering, matching, normalisation"),
     help("The defaults suit most data sets: click ", shiny::strong("Run processing"), " at the bottom right, then check the quality-control plots. ",
          "Every option chosen here is written to the Methods paragraph of the report."),
@@ -48,14 +51,21 @@ mod_process_ui <- function(id) {
       ),
       shiny::column(4,
         shiny::h4("Normalisation"),
+        shiny::uiOutput(ns("norm_diag")),
         shiny::radioButtons(ns("norm"), NULL, c("Global median centering (default)" = "global_median", "Per-condition median centering" = "median",
                                                  "ComBat (second factor = batch)" = "combat", "None" = "none")),
+        help("Both centerings make an assumption about the conditions; choose the one that holds in your experiment."),
         shiny::tags$ul(class = "step-help", style = "padding-left: 18px;",
-          shiny::tags$li(shiny::strong("Global median centering: "), "every sample of a table is shifted to the same median. Removes ",
-                         "differences of loading and of enrichment efficiency between samples. Use it unless you have a reason not to."),
+          shiny::tags$li(shiny::strong("Global median centering: "), "every sample of a table is shifted to the same median. ",
+                         shiny::em("Assumes"), " that the bulk of the features does not change between conditions: a global shift ",
+                         "between conditions is removed, whether it comes from loading or enrichment efficiency or from the biology ",
+                         "(e.g. a proteome-wide or modification-wide response to the treatment)."),
           shiny::tags$li(shiny::strong("Per-condition median centering: "), "samples are centred within each condition, so a global shift ",
-                         "between conditions is kept. Only when a global change of the modification is expected and loading was ",
-                         "controlled independently: otherwise a loading difference is reported as a change of every site."),
+                         "between conditions is kept. ", shiny::em("Assumes"), " that samples of all conditions were loaded and enriched ",
+                         "equally: a difference of loading or enrichment between conditions is then reported as a change of every ",
+                         "feature (in the simulations of the DiffPTM article, with random loading differences of the PTM samples and three ",
+                         "samples per condition, the mean false discovery proportion of the usage test was 0.22 with per-condition and ",
+                         "0.04 with global centering, at the same sensitivity, 0.59)."),
           shiny::tags$li(shiny::strong("ComBat: "), "removes a batch effect; the batch is the second factor of the Design step."),
           shiny::tags$li(shiny::strong("None: "), "data already normalised by the software (e.g. Spectronaut or DIA-NN normalised quantities; ",
                          "MaxQuant LFQ intensities are normalised between samples but can still be centred).")),
@@ -79,14 +89,31 @@ mod_process_ui <- function(id) {
       shiny::column(6, shiny::plotOutput(ns("pca"), height = 380))
     ),
     shiny::fluidRow(
-      shiny::column(6, shiny::plotOutput(ns("pearson"), height = 440)),
-      shiny::column(6, shiny::plotOutput(ns("jaccard"), height = 440))
+      shiny::column(6, shiny::plotOutput(ns("pearson"), height = 560)),
+      shiny::column(6, shiny::plotOutput(ns("jaccard"), height = 560))
     )
   )
 }
 
 mod_process_server <- function(id, annotated) {
   shiny::moduleServer(id, function(input, output, session) {
+    # what the data say about the normalisation, before any centering (filtered as the defaults)
+    diag <- shiny::reactive({
+      x <- annotated(); shiny::req(x)
+      tryCatch({
+        if (isTRUE(input$flags)) x <- filter_flagged(x)
+        suppressWarnings(normalisation_diagnostics(filter_min_observed(x, min_n = input$min_n %||% 2, min_pct = input$min_pct %||% 0)))
+      }, error = function(e) NULL)
+    })
+    output$norm_diag <- shiny::renderUI({
+      d <- diag(); shiny::req(d)
+      lab <- c(global_median = "global median centering", median = "per-condition median centering")
+      shiny::div(class = if (d$recommendation == "median") "alert alert-warning" else "alert alert-info", style = "padding: 8px 10px; font-size: 0.9em;",
+        shiny::strong("What your data say: "), d$message,
+        if (!identical(input$norm, d$recommendation))
+          shiny::div(style = "margin-top: 6px;", shiny::actionButton(session$ns("use_rec"), paste("Use", lab[[d$recommendation]]), class = "btn-sm")))
+    })
+    shiny::observeEvent(input$use_rec, { d <- diag(); shiny::req(d); shiny::updateRadioButtons(session, "norm", selected = d$recommendation) })
     x <- shiny::eventReactive(input$run, {
       x <- annotated(); shiny::req(x)
       shiny::withProgress(message = "Processing", {
@@ -98,20 +125,28 @@ mod_process_server <- function(id, annotated) {
           x <- filter_localization(x, input$min_prob)
           x <- filter_min_observed(x, min_n = input$min_n, min_pct = input$min_pct)
           shiny::incProgress(0.2, "Normalisation")
+          d <- tryCatch(suppressWarnings(normalisation_diagnostics(x)), error = function(e) NULL)
+          if (!is.null(d) && !is.na(d$case)) x <- add_log(x, sprintf("Normalisation diagnostics (DiffPTM normalisation_diagnostics()) recommended %s (case %d: %s).",
+            c(global_median = "global median centering", median = "per-condition median centering")[[d$recommendation]], d$case,
+            c("no shift of the PTM assay between conditions", "shift of a subset of sites, the bulk unchanged", "shift of the whole PTM distribution")[d$case]))
           x <- normalise(x, method = input$norm)
           shiny::incProgress(0.2, "Imputation")
           x <- impute(x, method = input$impute)
           shiny::incProgress(0.2, "Matching")
           if (input$sites) x <- collapse_to_sites(x)
           x <- match_ptm_to_protein(x, method = input$match, fasta = input$fasta$datapath, shared = input$shared)
-          if (!is.null(input$fasta)) x$files <- c(x$files, fasta = input$fasta$name)
+          if (!is.null(input$fasta)) {
+            mt <- input$fasta_meta
+            mod <- if (!is.null(mt) && identical(mt$name, input$fasta$name)) as.POSIXct(mt$modified / 1000, origin = "1970-01-01") else NA
+            x$fasta_source <- file_source(input$fasta$datapath, NA_character_, name = input$fasta$name, size = input$fasta$size, modified = mod)
+          }
           x
         }, error = function(e) { shiny::showNotification(conditionMessage(e), type = "error", duration = NULL); NULL })
       })
     })
     output$detected <- shiny::renderPlot({ shiny::req(x()); plot_detected_per_sample(x(), input$qc_assay) })
     output$jaccard <- shiny::renderPlot({ shiny::req(x()); x <- x(); ann <- x$annotation[[input$qc_assay]]
-      plot_heatmap_matrix(qc_jaccard(x, input$qc_assay), "Jaccard index on detection", groups = stats::setNames(as.character(groups_of(x, input$qc_assay)), ann$sample)) })
+      plot_heatmap_matrix(qc_jaccard(x, input$qc_assay), paste("Jaccard index on detection,", if (input$qc_assay == "protein") "total proteome" else "PTM"), groups = stats::setNames(as.character(groups_of(x, input$qc_assay)), ann$sample)) })
     output$pearson <- shiny::renderPlot({ shiny::req(x()); plot_correlation_matrix(x(), input$qc_assay) })
     output$pca <- shiny::renderPlot({ shiny::req(x()); plot_pca(x(), input$qc_assay) })
     output$dist <- shiny::renderPlot({ shiny::req(x()); plot_intensity_distributions(x(), input$qc_assay) })

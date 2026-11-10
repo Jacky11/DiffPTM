@@ -1,6 +1,7 @@
 #' Detection-profile discordance between a PTM feature and its parent protein
 #'
-#' Qualitative counterpart of the DPU test (the original app's `pepprot_dect*` sheets):
+#' Qualitative counterpart of the DPU test (Giai Gianetto, Methods Mol Biol 2023;2426:267-302,
+#' section 3.8; the original app's `pepprot_dect*` sheets):
 #' within each group, a PTM feature is *discordant* when it is observed in samples where
 #' the parent protein is not (`ptm_only`), or the protein is observed while the PTM is not
 #' (`protein_only`). Both are computed on the raw detection pattern (before imputation).

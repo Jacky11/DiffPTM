@@ -31,7 +31,9 @@ collapse_to_sites <- function(x, method = c("sum", "max", "median"), site_key = 
   new_meta$n_peptidoforms <- lengths(idx)
   new_meta$site_key <- names(idx)
   new_meta$feature_id <- make.unique(names(idx))
+  src <- x$ptm$source
   x$ptm <- new_assay(agg, new_meta, log2_transform = FALSE, sep = x$ptm$sep)
+  x$ptm$source <- src
   add_log(x, sprintf("Collapsed %d peptidoforms to %d sites (%s).", nrow(M), nrow(agg), method))
 }
 
@@ -109,7 +111,9 @@ merge_redundant_ptm <- function(x, key = NULL, tol = 1e-8) {
   new_meta <- meta[keep, , drop = FALSE]
   new_meta$protein_ids <- acc
   new_meta$n_redundant <- lengths(idx)
+  src <- x$ptm$source
   x$ptm <- new_assay(M[keep, , drop = FALSE], new_meta, log2_transform = FALSE, sep = x$ptm$sep)
+  x$ptm$source <- src
   add_log(x, sprintf("Merged %d PTM rows reporting the same peptide-level evidence for several proteins into %d features.",
                      nrow(M), length(idx)))
 }

@@ -135,6 +135,7 @@ plot_fc_comparison <- function(res_ptm, res_prot, parent, res_dpu = NULL, fdr = 
 #' @param groups optional named vector (sample -> condition).
 #' @export
 plot_heatmap_matrix <- function(mat, title = "", limits = c(0, 1), cluster = TRUE, groups = NULL) {
+  fs <- label_size(nrow(mat))
   ord <- if (cluster && nrow(mat) > 2) qc_dendrogram(mat)$order else seq_len(nrow(mat))
   mat <- mat[ord, ord, drop = FALSE]
   n <- nrow(mat); samples <- rownames(mat)
@@ -146,10 +147,10 @@ plot_heatmap_matrix <- function(mat, title = "", limits = c(0, 1), cluster = TRU
     ggplot2::scale_y_discrete(drop = FALSE) +
     ggplot2::labs(x = NULL, y = NULL, title = title) + theme_diffptm(10) +
     ggplot2::theme(panel.grid = ggplot2::element_blank(), legend.position = "right", legend.box = "vertical",
-                   axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = if (n > 20) 6 else 8),
-                   axis.text.y = ggplot2::element_text(size = if (n > 20) 6 else 8))
-  if (n > 40) p <- p + ggplot2::theme(axis.text.x = ggplot2::element_blank(), axis.text.y = ggplot2::element_blank(), axis.ticks = ggplot2::element_blank()) +
-    ggplot2::labs(subtitle = sprintf("%d samples, ordered by clustering", n))
+                   axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = fs),
+                   axis.text.y = ggplot2::element_text(size = fs), axis.ticks = ggplot2::element_line(linewidth = 0.2)) +
+    ggplot2::coord_equal()                                       # square cells, square matrix
+  if (n > 40) p <- p + ggplot2::labs(subtitle = sprintf("%d samples, ordered by clustering", n))
   if (!is.null(groups)) {
     g <- data.frame(x = factor(samples, levels = samples), y = factor("condition", levels = ylev), group = as.character(groups[samples]))
     p <- p + ggplot2::geom_point(data = g, ggplot2::aes(x = .data$x, y = .data$y, colour = .data$group), shape = 15, size = if (n > 40) 1.6 else 3) +
@@ -188,19 +189,22 @@ plot_detected_per_sample <- function(x, assay = "ptm") {
     ggplot2::scale_fill_manual(values = palette_diffptm(length(unique(d$group))), name = NULL) +
     ggplot2::labs(x = NULL, y = "features observed", title = sprintf("Features observed per sample, %s", assay),
                   subtitle = "dashed line: half the median; samples below it deserve a look") + theme_diffptm(11) +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = if (n > 20) 6 else 8))
-  if (n > 40) p <- p + ggplot2::theme(axis.text.x = ggplot2::element_blank(), axis.ticks.x = ggplot2::element_blank())
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = label_size(n)))
   p
 }
+
+#' Font size of sample names, smaller when there are many samples
+#' @keywords internal
+label_size <- function(n) if (n <= 20) 8 else if (n <= 40) 6 else if (n <= 80) 4.5 else 3.5
 
 #' PCA of samples
 #' @param x a `ptm_experiment`.
 #' @param assay `"protein"` or `"ptm"`.
-#' @param label write sample names next to the points (automatic: when at most 30 samples).
+#' @param label write sample names next to the points (default `TRUE`; smaller with many samples).
 #' @export
 plot_pca <- function(x, assay = "protein", label = NULL) {
   d <- qc_pca(x, assay); v <- attr(d, "var_explained")
-  if (is.null(label)) label <- nrow(d) <= 30
+  if (is.null(label)) label <- TRUE
   p <- ggplot2::ggplot(d, ggplot2::aes(.data$PC1, .data$PC2, colour = .data$group)) +
     ggplot2::geom_hline(yintercept = 0, colour = "#dddddd") + ggplot2::geom_vline(xintercept = 0, colour = "#dddddd") +
     ggplot2::geom_point(size = 2.6, alpha = 0.9) +
@@ -210,7 +214,10 @@ plot_pca <- function(x, assay = "protein", label = NULL) {
     theme_diffptm() + ggplot2::guides(colour = ggplot2::guide_legend(ncol = min(5, length(unique(d$group))), byrow = TRUE)) +
     ggplot2::theme(legend.text = ggplot2::element_text(size = if (length(unique(d$group)) > 8) 8 else 10))
   if (label && requireNamespace("ggrepel", quietly = TRUE))
-    p <- p + ggrepel::geom_text_repel(ggplot2::aes(label = .data$sample), size = 2.6, colour = "#444444", show.legend = FALSE, max.overlaps = 20)
+    p <- p + ggrepel::geom_text_repel(ggplot2::aes(label = .data$sample), size = if (nrow(d) <= 30) 2.6 else if (nrow(d) <= 60) 2 else 1.6,
+                                      colour = "#444444", show.legend = FALSE, max.overlaps = if (nrow(d) <= 30) 20 else 50,
+                                      segment.size = 0.2, min.segment.length = 0.3)
+  else if (label) p <- p + ggplot2::geom_text(ggplot2::aes(label = .data$sample), size = 2, colour = "#444444", vjust = -0.8, show.legend = FALSE)
   p
 }
 
@@ -226,8 +233,7 @@ plot_intensity_distributions <- function(x, assay = "protein") {
     ggplot2::scale_fill_manual(values = palette_diffptm(length(unique(d$group))), name = NULL) +
     ggplot2::labs(x = NULL, y = "log2 intensity", title = sprintf("Intensity distributions, %s", assay)) + theme_diffptm(11) +
     ggplot2::guides(fill = ggplot2::guide_legend(ncol = min(6, length(unique(d$group))), byrow = TRUE)) +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = if (n > 20) 6 else 8))
-  if (n > 40) p <- p + ggplot2::theme(axis.text.x = ggplot2::element_blank(), axis.ticks.x = ggplot2::element_blank())
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = label_size(n)))
   p
 }
 

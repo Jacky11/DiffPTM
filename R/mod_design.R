@@ -204,7 +204,6 @@ mod_design_server <- function(id, raw) {
         }
         p <- mk(ann$protein, a$protein, "proteome"); q <- mk(ann$ptm, a$ptm, "PTM")
         e <- new_ptm_experiment(p$assay, q$assay, annotation = list(protein = p$ann, ptm = q$ann))
-        e$files <- a$files
         e
       }, error = function(e) { shiny::showNotification(conditionMessage(e), type = "error", duration = NULL); NULL })
     })

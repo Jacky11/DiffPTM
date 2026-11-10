@@ -6,7 +6,7 @@
 #'   column-wise for each PTM feature; the group factor is `component:group`
 #'   (component = ptm / prot) and the tested contrast is
 #'   `(ptm.g1 - ptm.g2) - (prot.g1 - prot.g2)`, i.e. the interaction term of the
-#'   single-model strategy (Wolski et al. 2027, §1.5). Missing values are tolerated by
+#'   single-model strategy (Wolski et al., submitted to Methods Mol Biol, §1.5). Missing values are tolerated by
 #'   `lmFit`, so no complete-case filtering is applied; features with fewer than
 #'   `min_obs_per_group` observed values in a tested group are reported with `NA`.
 #'

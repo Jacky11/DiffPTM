@@ -1,6 +1,11 @@
 mod_import_ui <- function(id) {
   ns <- shiny::NS(id)
   shiny::tagList(
+    # the browser knows the modification date of the chosen files; send it with the name and size (for the Methods paragraph)
+    shiny::tags$script(shiny::HTML(sprintf(
+      "$(document).on('change', '#%s, #%s', function(e) { var f = e.target.files && e.target.files[0];
+         if (f) Shiny.setInputValue(e.target.id + '_meta', {name: f.name, size: f.size, modified: f.lastModified}); });",
+      ns("protein_file"), ns("ptm_file")))),
     shiny::h3("Input tables"),
     shiny::p(class = "step-help", "Upload the total-proteome table and the PTM table produced by your quantification software (MaxQuant, Spectronaut, Proteome Discoverer, FragPipe, DIA-NN), or load the example dataset."),
     shiny::fluidRow(
@@ -32,7 +37,6 @@ mod_import_ui <- function(id) {
 mod_import_server <- function(id) {
   shiny::moduleServer(id, function(input, output, session) {
     assays <- shiny::reactiveVal(NULL)
-    source_files <- shiny::reactiveVal(NULL)
     failed <- shiny::reactiveVal(NULL)
     shiny::observeEvent(input$go, {
       shiny::req(input$protein_file, input$ptm_file)
@@ -48,7 +52,11 @@ mod_import_server <- function(id) {
       })
       if (!is.null(res)) {
         failed(NULL)
-        res$files <- c(protein = input$protein_file$name, ptm = input$ptm_file$name, software = input$software)
+        for (k in c("protein", "ptm")) {                  # name, size and date of the file on the user's computer
+          fi <- input[[paste0(k, "_file")]]; mt <- input[[paste0(k, "_file_meta")]]
+          mod <- if (!is.null(mt) && identical(mt$name, fi$name) && !is.null(mt$modified)) as.POSIXct(mt$modified / 1000, origin = "1970-01-01") else NA
+          res[[k]]$source <- file_source(fi$datapath, input$software, name = fi$name, size = fi$size, modified = mod)
+        }
       }
       assays(res)
     })
@@ -59,8 +67,7 @@ mod_import_server <- function(id) {
       }
       assays(list(protein = import_protein(file.path(ex, "protein.tsv"), "Generic"),
                   ptm = import_ptm(file.path(ex, "ptm.tsv"), "Generic"),
-                  annotation = read_annotation(file.path(ex, "annotation.tsv")),
-                  files = c(protein = "example protein.tsv", ptm = "example ptm.tsv", software = "Generic")))
+                  annotation = read_annotation(file.path(ex, "annotation.tsv"))))
       failed(NULL)
       shiny::showNotification("Example dataset loaded (simulated, 2 conditions x 4 samples); go to step 2.", type = "message")
     })
@@ -81,10 +88,10 @@ mod_import_server <- function(id) {
       if (is.null(a)) return(shiny::div(class = "alert alert-danger", style = "padding: 8px 12px;",
         shiny::icon("triangle-exclamation"), shiny::strong(" Import failed. "), err))
       n <- function(k) sprintf("%d %s x %d runs", nrow(a[[k]]$intensity), if (k == "protein") "proteins" else "PTM features", ncol(a[[k]]$intensity))
-      f <- a$files
+      src <- a$ptm$source
       shiny::div(class = "alert alert-success", style = "padding: 8px 12px;",
         shiny::icon("circle-check"), shiny::strong(" Both tables imported successfully"),
-        sprintf("%s. Proteome: %s; PTM: %s. ", if (!is.null(f)) sprintf(" (%s: %s and %s)", f[["software"]], f[["protein"]], f[["ptm"]]) else "",
+        sprintf("%s. Proteome: %s; PTM: %s. ", if (!is.null(src)) sprintf(" (%s: %s and %s)", src$software, a$protein$source$name, src$name) else "",
                 n("protein"), n("ptm")),
         shiny::strong("Next: 2. Design."))
     })
