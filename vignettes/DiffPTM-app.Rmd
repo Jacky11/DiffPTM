@@ -86,7 +86,12 @@ to MaxQuant, Spectronaut and DIA-NN exports alike; the page says in plain words 
   Paired runs receive the same **sample** name, which is what the usage test pairs on;
 * each condition is read from the sample name without its replicate number, wherever it is
   (`mock_24h_1` -> `mock_24h`, `R1-A` -> `A`, `01_NS_R1` -> `NS`); MaxQuant SILAC channels become
-  samples `L_<experiment>`, `H_<experiment>` with conditions `L` and `H`.
+  samples `L_<experiment>`, `H_<experiment>` with conditions `L` and `H`;
+* when the conditions are all the combinations of two parts (`mock_6h`, `mock_24h`,
+  `SARS_COV2_6h`, `SARS_COV2_24h`), they are split into a condition and a second factor, a
+  time-like part (`6h`, `d3`, `T0`...) being the second factor (`split_factors()`): contrasts then
+  compare the conditions within each time point. The page lets you swap the two factors or keep a
+  single factor with all the groups.
 
 Each table lists the **run** (column of the imported file), the **sample** name and the
 **condition**; double-click a cell to change it (an empty condition means the run is not used).
@@ -101,44 +106,62 @@ blocking factor) and the **TMT mixture**.
 
 ## 3. Processing
 
-* *Filtering*: reverse hits and contaminants; site rows repeated for several protein
-  accessions with identical quantities (Spectronaut); minimal localization probability;
-  minimal number (and percentage) of observed values in at least one group.
-* *PTM to protein matching*: by identifier (fast) or by locating the peptide sequence in the
-  FASTA of the search (robust to differences of protein inference between the two
-  searches). For peptide tables without site positions (DIA-NN precursors, FragPipe
-  modified peptides) the FASTA also gives the site positions.
-* *Normalisation*: per-condition median centering (default), global median, ComBat, none.
-* *Imputation*: off by default. The three methods fit on observed values; imputing before
-  the correction inflates false discoveries.
+Every option is explained on the page; the defaults suit most data sets.
+
+* *Filtering*: reverse hits, contaminants and "only identified by site" entries; site rows
+  repeated for several protein accessions with identical quantities (Spectronaut); minimal
+  localization probability (0.75); minimal number (and percentage) of observed values in at
+  least one group (2).
+* *PTM to protein matching*: by identifier (default; enough when both tables come from the same
+  software and database) or by locating the peptide sequence in the FASTA of the search (when
+  the two searches differ in protein inference or database version); *hybrid* uses the sequence
+  when it gives a match, the identifier otherwise. The FASTA is needed for sequence or hybrid
+  matching, and for peptide tables without site positions (DIA-NN precursors, FragPipe modified
+  peptides), where it gives the position of the modified residue. A site that matches several
+  quantified protein groups (shared peptide, isoforms) is corrected with their mean abundance
+  (default), with the first one, or kept for the abundance test only.
+* *Normalisation*: global median centering (default: removes differences of loading and of
+  enrichment efficiency between samples); per-condition median centering (keeps a global shift
+  between conditions; only when such a change is expected and loading was controlled
+  independently, otherwise a loading difference becomes a change of every site); ComBat (batch
+  = second factor); none (data already normalised by the software).
+* *Imputation*: off by default; the tests use the observed values.
 
 The **quality-control** plots show, for each table: the number of features observed per
 sample (runs that quantified far fewer features than the others stand out and should be
-removed in step 2), the Jaccard index of detection between samples with the conditions as a
-colour strip, a PCA and the intensity distributions. The processing log lists every
-operation; it becomes the Materials & Methods paragraph of the report.
+removed in step 2), the intensity distributions, a PCA, the Pearson correlation matrix between
+samples and the Jaccard index of detection between samples, both with the conditions as a
+colour strip. The processing log lists every operation; it becomes the Materials & Methods
+paragraph of the report.
 
 ## 4. Statistics
 
 Choose the methods (the single model is always available; MSstatsPTM and msqrob2PTM when
 installed), the analyses (protein abundance, PTM abundance, PTM usage), the contrasts (each
-condition against a reference, every pair, or each condition against the others), the
-π₀-aware FDR procedure, the FDR threshold and an optional fold-change threshold (1 = none,
-the recommended setting for usage).
+condition against a reference, every pair, or each condition against the others; with a second
+factor, within each of its levels), the π₀-aware FDR procedure, the FDR threshold and an optional
+fold-change threshold (1 = none, the recommended setting for usage). The analysis starts when
+**Run** is clicked and the page reports the number of significant features per method. Running
+times differ: for 21,770 sites and four contrasts on one thread, 12 s for the single model, about
+a minute for msqrob2PTM and 11 min for MSstatsPTM.
 
 ## 5. Results
 
 For the selected analysis, contrast and method: a volcano plot labelled with gene and site,
 the raw p-value histogram (flat with a peak near 0 when the test is well calibrated), the
 PTM-vs-protein fold-change plot (points off the diagonal change in usage), the number of
-significant features per contrast and method, the agreement between methods, the table of
+significant features per contrast and method, the agreement between methods as an UpSet plot
+(each bar counts the features called by exactly the methods marked below it), the table of
 significant features and the detection-discordance table (PTM features observed in samples
 where their protein was not quantified, which no quantitative test can use).
 
 ## 6. Download
 
-An Excel workbook with every table, a README sheet and the Materials & Methods paragraph;
-the figures as an editable PowerPoint and as PDF; and the session as an `.rds` file.
+An Excel workbook with every table, a README sheet with the Materials & Methods paragraph and
+a `column_descriptions` sheet that explains every column (also shown as comments on the column
+headers of the result sheets); the figures as an editable PowerPoint and as PDF, quality control
+first; and the session as an `.rds` file. The Materials & Methods text names the input files and
+can be edited on the page before the Excel workbook is downloaded.
 
 ## Reproducing an interface analysis in R
 
