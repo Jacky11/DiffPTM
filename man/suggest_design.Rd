@@ -15,7 +15,8 @@ suggest_design(protein, ptm, pattern = "[_ .-]")
 a list with \code{annotation}, one data frame per table with columns \code{run} (column name in
 the imported table), \code{sample} (name used in the analysis; \code{""} for an excluded run),
 \code{condition} (\code{""} for an excluded run), \code{factor}, \code{subject} and \code{mixture}; and \code{messages},
-a plain-language summary of what was done.
+a plain-language summary of what was done; \code{factors}, the two-factor split found in the
+conditions (see \code{\link[=split_factors]{split_factors()}}) or \code{NULL}.
 }
 \description{
 Proposes, without any input from the user, what the Design step of the interface needs. The
@@ -41,6 +42,12 @@ same sample name, which is what the usage test uses to pair them.
 number (\code{1}, \code{R1}, \code{rep2}, ...) is removed, as is a leading run number (\verb{01_NS_R1}), and
 the rest is the condition. The position of the replicate part is chosen so that every
 condition has at least two samples (\code{R1-A} -> \code{A}, \code{mock_24h_1} -> \code{mock_24h}).
+\item \strong{Two factors.} When the conditions are all the combinations of two parts (e.g. \code{mock_6h},
+\code{mock_24h}, \code{SARS_COV2_6h}, \code{SARS_COV2_24h}: 2 conditions x 2 time points), the conditions
+are split into a condition and a second factor (a time-like part, \verb{6h}, \verb{24h}, \code{d3}, \code{T0},
+..., is taken as the second factor; otherwise the last part). Contrasts are then built
+between conditions within each level of the second factor (see \code{\link[=make_contrasts]{make_contrasts()}});
+\code{factors} describes the split so that the interface can undo or swap it.
 }
 }
 \examples{

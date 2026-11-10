@@ -4,7 +4,14 @@
 \alias{write_results_xlsx}
 \title{Write results and QC tables to an Excel workbook}
 \usage{
-write_results_xlsx(x, res, path, extra = list(), blocking = "auto")
+write_results_xlsx(
+  x,
+  res,
+  path,
+  extra = list(),
+  blocking = "auto",
+  methods_text = NULL
+)
 }
 \arguments{
 \item{x}{a \code{ptm_experiment}.}
@@ -16,8 +23,15 @@ write_results_xlsx(x, res, path, extra = list(), blocking = "auto")
 \item{extra}{named list of additional data.frames (e.g. \code{compare_methods()$wide}).}
 
 \item{blocking}{the pairing option of the usage analysis, for the Methods paragraph (see \code{\link[=methods_paragraph]{methods_paragraph()}}).}
+
+\item{methods_text}{Materials & Methods text written to the README sheet (default:
+\code{\link[=methods_paragraph]{methods_paragraph()}}; the interface passes the text as edited by the user).}
 }
 \description{
 One sheet per table plus a \code{README} sheet with sheet descriptions and the Methods
 paragraph (replaces the \verb{*_descriptions.txt} files of the original app).
+}
+\details{
+Every column of every sheet is explained in the \code{column_descriptions} sheet, and in
+a comment on its header cell in the result sheets.
 }
