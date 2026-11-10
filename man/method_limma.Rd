@@ -67,7 +67,7 @@ contrasts \code{group1 - group2}, \code{eBayes(robust = TRUE)}.
 column-wise for each PTM feature; the group factor is \code{component:group}
 (component = ptm / prot) and the tested contrast is
 \code{(ptm.g1 - ptm.g2) - (prot.g1 - prot.g2)}, i.e. the interaction term of the
-single-model strategy (Wolski et al. 2027, §1.5). Missing values are tolerated by
+single-model strategy (Wolski et al., submitted to Methods Mol Biol, §1.5). Missing values are tolerated by
 \code{lmFit}, so no complete-case filtering is applied; features with fewer than
 \code{min_obs_per_group} observed values in a tested group are reported with \code{NA}.
 }

@@ -17,7 +17,8 @@ data.frame(feature_id, group, n_samples, n_ptm_only, n_protein_only, n_both, fla
 \code{no_parent_protein} (feature not matched to any proteome row).
 }
 \description{
-Qualitative counterpart of the DPU test (the original app's \verb{pepprot_dect*} sheets):
+Qualitative counterpart of the DPU test (Giai Gianetto, Methods Mol Biol 2023;2426:267-302,
+section 3.8; the original app's \verb{pepprot_dect*} sheets):
 within each group, a PTM feature is \emph{discordant} when it is observed in samples where
 the parent protein is not (\code{ptm_only}), or the protein is observed while the PTM is not
 (\code{protein_only}). Both are computed on the raw detection pattern (before imputation).

@@ -11,7 +11,7 @@ plot_pca(x, assay = "protein", label = NULL)
 
 \item{assay}{\code{"protein"} or \code{"ptm"}.}
 
-\item{label}{write sample names next to the points (automatic: when at most 30 samples).}
+\item{label}{write sample names next to the points (default \code{TRUE}; smaller with many samples).}
 }
 \description{
 PCA of samples

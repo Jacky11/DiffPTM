@@ -39,7 +39,7 @@ isoform suffixes \code{-2} are optionally stripped).
 \item \code{"sequence"}: the stripped peptide sequence is searched in the protein sequences of a
 FASTA file (Aho-Corasick when \code{AhoCorasickTrie} is installed, fixed \code{grepl} loop
 otherwise); the accession(s) found are then mapped to proteome rows by ID. This is the
-strategy recommended by Wolski et al. (MiMB 2027, §1.6) because it bypasses differences
+strategy recommended by Wolski et al. (submitted to Methods Mol Biol, §1.6) because it bypasses differences
 in protein inference between the PTM and total-proteome searches.
 }
 
