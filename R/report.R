@@ -13,9 +13,16 @@ methods_paragraph <- function(x, methods = "limma", blocking = "auto") {
   cites <- c(limma = sprintf("limma v%s (Ritchie et al., 2015)", ver("limma")),
              msstatsptm = sprintf("MSstatsPTM v%s (Kohler et al., 2023)", ver("MSstatsPTM")),
              msqrob2ptm = sprintf("msqrob2PTM v%s (Demeulemeester et al., 2024)", ver("msqrob2")))
+  f <- x$files
+  inputs <- if (!is.null(f) && all(c("protein", "ptm") %in% names(f)))
+    sprintf("Input files: total proteome table %s and PTM table %s%s%s. ", f[["protein"]], f[["ptm"]],
+            if ("software" %in% names(f)) sprintf(" (%s)", f[["software"]]) else "",
+            if ("fasta" %in% names(f)) sprintf("; FASTA %s", f[["fasta"]]) else "") else ""
   paste0(
+    inputs,
     "Data were processed with DiffPTM v", ver("DiffPTM"), " (R ", R.version$major, ".", R.version$minor, "). ",
     paste(x$log, collapse = " "),
+    design_sentence(x),
     " Differential analyses were performed with ", paste(cites[methods], collapse = ", "),
     ".",
     if ("limma" %in% methods) paste0(" In the single model, site and matched protein intensities were fitted together (component x condition design)",
@@ -38,25 +45,45 @@ methods_paragraph <- function(x, methods = "limma", blocking = "auto") {
 #' @param path output `.xlsx`.
 #' @param extra named list of additional data.frames (e.g. `compare_methods()$wide`).
 #' @param blocking the pairing option of the usage analysis, for the Methods paragraph (see [methods_paragraph()]).
+#' @param methods_text Materials & Methods text written to the README sheet (default:
+#'   [methods_paragraph()]; the interface passes the text as edited by the user).
+#' @details Every column of every sheet is explained in the `column_descriptions` sheet, and in
+#'   a comment on its header cell in the result sheets.
 #' @export
-write_results_xlsx <- function(x, res, path, extra = list(), blocking = "auto") {
+write_results_xlsx <- function(x, res, path, extra = list(), blocking = "auto", methods_text = NULL) {
   wb <- openxlsx::createWorkbook()
-  desc <- list()
-  add <- function(name, df, description) {
+  desc <- list(); coldesc <- list()
+  add <- function(name, df, description, samples = NULL, comments = FALSE) {
     name <- substr(gsub("[\\[\\]\\*\\?/\\\\:]", "_", name), 1, 31)
     openxlsx::addWorksheet(wb, name)
-    openxlsx::writeDataTable(wb, name, as.data.frame(df))
+    df <- as.data.frame(df)
+    openxlsx::writeDataTable(wb, name, df)
     desc[[length(desc) + 1]] <<- data.frame(sheet = name, description = description)
+    cd <- describe_columns(names(df), samples)
+    cdd <- data.frame(sheet = name, column = names(df), description = cd)
+    if (!is.null(samples)) {                       # one row for all the sample columns
+      isS <- cdd$column %in% names(samples)
+      cdd <- rbind(cdd[!isS, ], data.frame(sheet = name, column = sprintf("one column per sample (%s%s)", paste(utils::head(names(samples), 3), collapse = ", "), if (length(samples) > 3) ", ..." else ""),
+                                           description = sub("sample \\S+", "this sample", samples[[1]])))
+    }
+    coldesc[[length(coldesc) + 1]] <<- cdd
+    if (comments) for (j in seq_along(cd)) if (nzchar(cd[j]))
+      openxlsx::writeComment(wb, name, col = j, row = 1, comment = openxlsx::createComment(cd[j], author = "DiffPTM", width = 3, height = 4))
   }
   openxlsx::addWorksheet(wb, "README")
   for (a in c("protein", "ptm")) {
     if (is.null(x[[a]])) next
+    smp <- colnames(x[[a]]$intensity)
     add(paste0(a, "_intensities"), cbind(x[[a]]$meta, x[[a]]$intensity),
-        sprintf("Processed log2 intensities of the %s assay with feature metadata", a))
+        sprintf("Processed log2 intensities of the %s assay with feature metadata", a),
+        samples = stats::setNames(sprintf("Processed log2 intensity in sample %s (after filtering and normalisation; empty = not observed)", smp), smp))
     add(paste0(a, "_detection"), cbind(feature_id = x[[a]]$meta$feature_id, qc_detection(x, a)),
-        sprintf("Detection profile (1 = observed before imputation) of the %s assay", a))
-    add(paste0(a, "_jaccard"), as.data.frame(qc_jaccard(x, a)), "Jaccard index between samples on detection patterns")
-    add(paste0(a, "_pearson"), as.data.frame(qc_pearson(x, a)), "Pearson correlation between samples")
+        sprintf("Detection profile (1 = observed before imputation) of the %s assay", a),
+        samples = stats::setNames(sprintf("1 if the feature was observed in sample %s (before any imputation), 0 if missing", smp), smp))
+    add(paste0(a, "_jaccard"), cbind(sample = smp, as.data.frame(qc_jaccard(x, a))), "Jaccard index between samples on detection patterns",
+        samples = stats::setNames(sprintf("Jaccard index with sample %s: features observed in both / features observed in either", smp), smp))
+    add(paste0(a, "_pearson"), cbind(sample = smp, as.data.frame(qc_pearson(x, a))), "Pearson correlation between samples",
+        samples = stats::setNames(sprintf("Pearson correlation of the log2 intensities with sample %s (features observed in both)", smp), smp))
   }
   for (an in unique(res$analysis)) for (e in unique(res$method)) {
     sub <- res[res$analysis == an & res$method == e, ]
@@ -67,16 +94,27 @@ write_results_xlsx <- function(x, res, path, extra = list(), blocking = "auto") 
     m <- meta[match(wide$feature_id, meta$feature_id), , drop = FALSE]
     first <- intersect(c("feature_id", "label", "gene", "protein_ids", "residue", "position", "multiplicity", "localization_prob"), names(m))
     wide <- cbind(m[, c(first, setdiff(names(m), c(first, "feature_id"))), drop = FALSE], wide[, setdiff(names(wide), "feature_id"), drop = FALSE])
-    add(paste(an, e, sep = "_"), wide, sprintf("%s results of method %s per contrast: log2FC, standard error, degrees of freedom, 95 %% confidence interval, p-value, adjusted p-value (NA = not tested by this method)", an, e))
+    what <- c(protein_DPA = "differential protein abundance", ptm_DPA = "differential PTM abundance (site intensity, not corrected for its protein)",
+              ptm_DPU = "differential PTM usage (site corrected for its protein)")[[an]]
+    add(paste(an, e, sep = "_"), wide, sprintf("Results of %s with method %s, one block of columns per contrast: log2FC, standard error, degrees of freedom, 95 %% confidence interval, p-value, adjusted p-value (NA = not tested). See column_descriptions.", what, e),
+        comments = TRUE)
   }
   known <- c(detection_discordance = "PTM features detected in samples where their protein was not (and the reverse), on the detection pattern before imputation",
              method_comparison = "Significant calls and log2FC of every method side by side, per feature, analysis and contrast")
-  for (nm in names(extra)) add(nm, extra[[nm]], if (nm %in% names(known)) known[[nm]] else paste("Additional table:", nm))
+  for (nm in names(extra)) add(nm, extra[[nm]], if (nm %in% names(known)) known[[nm]] else paste("Additional table:", nm), comments = TRUE)
+  cdf <- do.call(rbind, coldesc)
+  openxlsx::addWorksheet(wb, "column_descriptions")
+  openxlsx::writeDataTable(wb, "column_descriptions", cdf)
+  openxlsx::setColWidths(wb, "column_descriptions", cols = 1:3, widths = c(28, 34, 120))
+  if (is.null(methods_text)) methods_text <- methods_paragraph(x, unique(res$method), blocking)
   readme <- rbind(data.frame(sheet = "README", description = "Sheet descriptions and Materials & Methods"),
                   do.call(rbind, desc),
-                  data.frame(sheet = "Methods", description = methods_paragraph(x, unique(res$method), blocking)))
+                  data.frame(sheet = "column_descriptions", description = "Meaning of every column of every sheet (also shown as a comment on the column headers of the result sheets)"),
+                  data.frame(sheet = "Methods", description = methods_text))
   openxlsx::writeData(wb, "README", readme)
   openxlsx::setColWidths(wb, "README", cols = 1:2, widths = c(30, 120))
+  openxlsx::addStyle(wb, "README", openxlsx::createStyle(wrapText = TRUE, valign = "top"), rows = seq_len(nrow(readme) + 1), cols = 2, gridExpand = TRUE)
+  openxlsx::worksheetOrder(wb) <- c(1, length(openxlsx::sheets(wb)), seq(2, length(openxlsx::sheets(wb)) - 1))
   openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
   invisible(path)
 }
@@ -114,4 +152,76 @@ write_results_pdf <- function(figures, path, width = 8, height = 7) {
   on.exit(grDevices::dev.off())
   for (nm in names(figures)) print(figures[[nm]])
   invisible(path)
+}
+
+#' Plain-language description of result and table columns
+#' @param cols column names.
+#' @param samples optional named character vector: descriptions of sample columns.
+#' @return character vector of descriptions (`""` when unknown).
+#' @keywords internal
+describe_columns <- function(cols, samples = NULL) {
+  rules <- list(
+    "^feature_id$" = "Identifier of the feature (protein group, PTM site or peptidoform); the same in every sheet",
+    "^sample$" = "Sample",
+    "^label$" = "Readable name of the feature (gene and site, e.g. GENE_S123, or protein)",
+    "^gene$" = "Gene name(s), from the input table",
+    "^protein_ids$" = "Protein accession(s), from the input table (several separated by ;)",
+    "^stripped_sequence$" = "Peptide sequence without modifications",
+    "^modified_sequence$" = "Peptide sequence with its modifications",
+    "^residue$" = "Modified amino acid",
+    "^position$" = "Position of the modified residue in the first protein",
+    "^positions_within_proteins$" = "Position of the site in each protein of protein_ids",
+    "^ptm_type$" = "Type of modification",
+    "^localization_prob$" = "Localization probability of the site, from the software (1 = certain)",
+    "^multiplicity$" = "Number of modifications on the measured peptide (MaxQuant ___1, ___2, ___3)",
+    "^matched_protein$" = "feature_id of the proteome protein group(s) matched to this PTM feature; their abundance is used for the usage (DPU) correction",
+    "^n_matched_protein$" = "Number of proteome protein groups matched to this PTM feature (0 = no usage test possible)",
+    "^n_peptidoforms$" = "Number of peptidoforms summed into this site",
+    "^multisite_key$" = "Key grouping the peptidoforms that carry the same set of sites",
+    "^(Reverse|Potential\\.contaminant|Only\\.identified\\.by\\.site)$" = "Flag of the input table (TRUE = flagged by the software)",
+    "^analysis$" = "protein_DPA = differential protein abundance; ptm_DPA = differential PTM abundance (site intensity); ptm_DPU = differential PTM usage (site corrected for its protein)",
+    "^contrast$" = "Comparison: first group minus second group (B_vs_A = B minus A)",
+    "^group$" = "Group (condition, and second factor if any)",
+    "^n_samples$" = "Number of samples of the group",
+    "^n_ptm_only$" = "Samples of the group where the PTM feature is observed and its protein is not",
+    "^n_protein_only$" = "Samples of the group where the protein is observed and the PTM feature is not",
+    "^n_both$" = "Samples of the group where both are observed",
+    "^flag$" = "concordant; ptm_without_protein (the modification is seen where its protein is not: no usage test possible); protein_without_ptm; no_parent_protein (no matching protein in the proteome table)",
+    "^n_methods_significant$" = "Number of methods calling the feature significant")
+  out <- character(length(cols))
+  for (i in seq_along(cols)) {
+    v <- cols[i]
+    if (!is.null(samples) && v %in% names(samples)) { out[i] <- samples[[v]]; next }
+    hit <- which(vapply(names(rules), function(r) grepl(r, v, perl = TRUE), logical(1)))
+    if (length(hit)) { out[i] <- rules[[hit[1]]]; next }
+    m <- regmatches(v, regexec("^(log2FC|se|df|ci_lo|ci_hi|statistic|pvalue|adj_pvalue)[._](.+)$", v))[[1]]
+    if (length(m)) {
+      per <- if (substr(v, nchar(m[2]) + 1, nchar(m[2]) + 1) == ".") sprintf("contrast %s", m[3]) else sprintf("method %s", m[3])
+      out[i] <- switch(m[2],
+        log2FC = sprintf("log2 fold change, %s: first minus second group of the contrast; for usage (DPU), change of the site intensity relative to its protein (site minus protein)", per),
+        se = sprintf("Standard error of the log2 fold change, %s", per),
+        df = sprintf("Degrees of freedom of the test, %s (limma: residual plus prior degrees of freedom)", per),
+        ci_lo = sprintf("Lower bound of the 95 %% confidence interval of the log2 fold change, %s", per),
+        ci_hi = sprintf("Upper bound of the 95 %% confidence interval of the log2 fold change, %s", per),
+        statistic = sprintf("Test statistic (moderated t), %s", per),
+        pvalue = sprintf("Raw p-value, %s", per),
+        adj_pvalue = sprintf("Adjusted p-value (false discovery rate), %s: the feature is significant when it is below the chosen FDR (e.g. 0.05)", per))
+      next
+    }
+    m <- regmatches(v, regexec("^sig_(.+)$", v))[[1]]
+    if (length(m)) { out[i] <- sprintf("TRUE if significant with method %s at the chosen FDR and fold-change thresholds", m[2]); next }
+  }
+  out
+}
+
+#' One sentence describing the groups of the design, for the Methods paragraph
+#' @keywords internal
+design_sentence <- function(x) {
+  ann <- x$annotation$ptm %||% x$annotation$protein
+  if (is.null(ann)) return("")
+  cc <- unique(ann$condition)
+  if ("factor" %in% names(ann) && !all(is.na(ann$factor)))
+    sprintf(" Samples were annotated with a condition (%s) and a second factor (%s); contrasts compared conditions within each level of the second factor.",
+            paste(cc, collapse = ", "), paste(unique(stats::na.omit(ann$factor)), collapse = ", "))
+  else sprintf(" Samples were annotated with %d conditions (%s).", length(cc), paste(cc, collapse = ", "))
 }

@@ -13,7 +13,10 @@ mod_results_ui <- function(id) {
     shiny::fluidRow(
       shiny::column(4, shiny::plotOutput(ns("hist"), height = 300)),
       shiny::column(4, shiny::plotOutput(ns("counts"), height = 300)),
-      shiny::column(4, shiny::h4("Agreement between methods"), shiny::p(class = "step-help", "Significant features called by each combination of methods (selected analysis and contrast)."), shiny::tableOutput(ns("overlap")))
+      shiny::column(4, shiny::h4("Agreement between methods"),
+                    shiny::p(class = "step-help", "Significant features of the selected analysis and contrast, by combination of methods (UpSet plot: ",
+                             "each bar counts the features called by exactly the methods marked below it). Run two or three methods at the Statistics step to see it."),
+                    shiny::plotOutput(ns("overlap"), height = 330))
     ),
     shiny::h4("Significant features"), DT::DTOutput(ns("table")),
     shiny::h4("Detection discordance"),
@@ -45,8 +48,9 @@ mod_results_server <- function(id, stats) {
       first <- intersect(c("label", "feature_id", "gene", "protein_ids", "residue", "position", "contrast", "log2FC", "se", "df", "ci_lo", "ci_hi", "statistic", "pvalue", "adj_pvalue"), names(d))
       d <- d[order(d$pvalue), c(first, setdiff(names(d), c(first, "analysis", "method")))]
       DT::datatable(d, options = list(pageLength = 15, scrollX = TRUE), rownames = FALSE) |> DT::formatSignif(intersect(c("log2FC", "se", "df", "ci_lo", "ci_hi", "statistic", "pvalue", "adj_pvalue"), names(d)), 3) })
-    output$overlap <- shiny::renderTable({ s <- stats(); shiny::req(length(s$methods) > 1)
-      o <- compare_methods(s$res, s$fdr, s$min_log2fc)$overlap; o[o$analysis == input$analysis & o$contrast == input$contrast, c("methods", "Freq")] })
+    output$overlap <- shiny::renderPlot({ s <- stats(); shiny::req(length(s$methods) > 1, input$contrast)
+      plot_method_overlap(s$res, s$fdr, s$min_log2fc, input$analysis, input$contrast, title = NULL, subtitle = NULL) +
+        ggplot2::labs(title = NULL) })
     output$discordance <- DT::renderDT({ s <- stats(); d <- detection_discordance(s$x); d <- d[d$flag == input$disc_flag, ]
       meta <- s$x$ptm$meta; d <- cbind(label = meta$label[match(d$feature_id, meta$feature_id)], d)
       DT::datatable(d, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE) })

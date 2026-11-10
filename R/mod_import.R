@@ -17,11 +17,13 @@ mod_import_ui <- function(id) {
         shiny::actionButton(ns("go"), "Import", class = "btn-primary", icon = shiny::icon("upload"))
       ),
       shiny::column(8,
-        shiny::h4("Advanced: column mapping"),
-        shiny::p(class = "step-help", "Regular expressions with one capture group giving the sample name. Leave empty to use the defaults of the selected software."),
-        shiny::textInput(ns("protein_quant"), "Protein quantitative columns (regex)", ""),
-        shiny::textInput(ns("ptm_quant"), "PTM quantitative columns (regex)", ""),
-        shiny::verbatimTextOutput(ns("summary"))
+        shiny::uiOutput(ns("status")),
+        shiny::verbatimTextOutput(ns("summary")),
+        shiny::tags$details(
+          shiny::tags$summary(shiny::strong("Advanced: column mapping"), " (only if the quantitative columns are not found)"),
+          shiny::p(class = "step-help", "Regular expressions with one capture group giving the sample name. Leave empty to use the defaults of the selected software."),
+          shiny::textInput(ns("protein_quant"), "Protein quantitative columns (regex)", ""),
+          shiny::textInput(ns("ptm_quant"), "PTM quantitative columns (regex)", ""))
       )
     )
   )
@@ -30,6 +32,8 @@ mod_import_ui <- function(id) {
 mod_import_server <- function(id) {
   shiny::moduleServer(id, function(input, output, session) {
     assays <- shiny::reactiveVal(NULL)
+    source_files <- shiny::reactiveVal(NULL)
+    failed <- shiny::reactiveVal(NULL)
     shiny::observeEvent(input$go, {
       shiny::req(input$protein_file, input$ptm_file)
       shiny::withProgress(message = "Importing", {
@@ -40,8 +44,12 @@ mod_import_server <- function(id) {
             protein = import_protein(input$protein_file$datapath, input$software, quant_pattern = qp, log2_transform = input$log2),
             ptm = import_ptm(input$ptm_file$datapath, input$software, quant_pattern = qq, log2_transform = input$log2,
                              multiplicity = input$multiplicity %||% "expand"))
-        }, error = function(e) { shiny::showNotification(conditionMessage(e), type = "error", duration = NULL); NULL })
+        }, error = function(e) { failed(conditionMessage(e)); shiny::showNotification(conditionMessage(e), type = "error", duration = NULL); NULL })
       })
+      if (!is.null(res)) {
+        failed(NULL)
+        res$files <- c(protein = input$protein_file$name, ptm = input$ptm_file$name, software = input$software)
+      }
       assays(res)
     })
     shiny::observeEvent(input$example, {
@@ -51,18 +59,34 @@ mod_import_server <- function(id) {
       }
       assays(list(protein = import_protein(file.path(ex, "protein.tsv"), "Generic"),
                   ptm = import_ptm(file.path(ex, "ptm.tsv"), "Generic"),
-                  annotation = read_annotation(file.path(ex, "annotation.tsv"))))
+                  annotation = read_annotation(file.path(ex, "annotation.tsv")),
+                  files = c(protein = "example protein.tsv", ptm = "example ptm.tsv", software = "Generic")))
+      failed(NULL)
       shiny::showNotification("Example dataset loaded (simulated, 2 conditions x 4 samples); go to step 2.", type = "message")
     })
     output$software_help <- shiny::renderUI({
       txt <- switch(input$software,
-        MaxQuant = "proteinGroups.txt and Phospho (STY)Sites.txt / GlyGly (K)Sites.txt. LFQ intensities are used when present. In a combined search the PTM runs carry a prefix (Phospho_...): rename them in step 2.",
+        MaxQuant = "proteinGroups.txt and Phospho (STY)Sites.txt / GlyGly (K)Sites.txt. LFQ intensities are used when present. In a combined search all runs appear in every table; step 2 keeps the right ones and pairs them automatically.",
         Spectronaut = "Protein pivot report (PG.Quantity) and PTM site pivot report (PTM.Quantity, PTM.SiteProbability); semicolon-separated files with decimal commas are read as such.",
         `Proteome Discoverer` = "Proteins export and PeptideGroups export (tab-separated text); sites are read from 'Modifications in Master Proteins'.",
         FragPipe = "combined_protein.tsv or abundance_protein_*.tsv, and abundance_single-site_*.tsv (TMT) or combined_modified_peptide.tsv (label-free).",
         `DIA-NN` = "report.pg_matrix.tsv and report.pr_matrix.tsv (or a site matrix); sample names are the raw file names.",
         Generic = "Wide tables: protein_id / feature_id columns, metadata columns and one intensity_<sample> column per sample (see Help).")
       shiny::p(class = "step-help", txt)
+    })
+    output$status <- shiny::renderUI({
+      a <- assays(); err <- failed()
+      if (is.null(a) && is.null(err)) return(shiny::div(class = "alert alert-info", style = "padding: 8px 12px;",
+        "No data imported yet: choose the two files and click Import (or load the example dataset)."))
+      if (is.null(a)) return(shiny::div(class = "alert alert-danger", style = "padding: 8px 12px;",
+        shiny::icon("triangle-exclamation"), shiny::strong(" Import failed. "), err))
+      n <- function(k) sprintf("%d %s x %d runs", nrow(a[[k]]$intensity), if (k == "protein") "proteins" else "PTM features", ncol(a[[k]]$intensity))
+      f <- a$files
+      shiny::div(class = "alert alert-success", style = "padding: 8px 12px;",
+        shiny::icon("circle-check"), shiny::strong(" Both tables imported successfully"),
+        sprintf("%s. Proteome: %s; PTM: %s. ", if (!is.null(f)) sprintf(" (%s: %s and %s)", f[["software"]], f[["protein"]], f[["ptm"]]) else "",
+                n("protein"), n("ptm")),
+        shiny::strong("Next: 2. Design."))
     })
     output$summary <- shiny::renderPrint({
       a <- assays(); shiny::req(a)

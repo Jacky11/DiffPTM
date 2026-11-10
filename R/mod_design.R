@@ -9,10 +9,22 @@ mod_design_ui <- function(id) {
       shiny::column(5,
         shiny::h4("1. What DiffPTM found"),
         shiny::uiOutput(ns("suggestion")),
-        shiny::h4("2. Conditions"),
+        shiny::tags$details(style = "margin-bottom: 10px;",
+          shiny::tags$summary("How are the tables filled?"),
+          shiny::tags$ol(class = "step-help", style = "padding-left: 18px; margin-top: 6px;",
+            shiny::tags$li("Runs without any quantified value are not used (a combined search lists every run in every table)."),
+            shiny::tags$li("When both tables list the same runs, the PTM-enriched runs are those that quantify many more sites."),
+            shiny::tags$li("Parts of the run names that only mark the fraction (in every name of one table, rarely in the other: ",
+                           "Phospho, P, Proteome, T, FP...) are removed; PTM and proteome runs whose names are then equal (or ",
+                           "clearly the most similar) are the same biological sample and get the same ", shiny::em("sample"), " name."),
+            shiny::tags$li("The condition is the sample name without its replicate number (1, R1, rep2...), wherever it is."),
+            shiny::tags$li("When the conditions are all the combinations of two parts (e.g. mock / SARS_COV2 x 6h / 24h), they are ",
+                           "split into a condition and a second factor (a time-like part is the second factor)."))),
+        shiny::uiOutput(ns("grouping_ui")),
+        shiny::h4("2. Groups"),
         shiny::p(class = "step-help",
-                 "Number of samples per condition in each table, and how many PTM samples are paired with a proteome ",
-                 "sample (same ", shiny::em("sample"), " name)."),
+                 "Number of samples per group (condition, and second factor if any) in each table, and how many PTM samples ",
+                 "are paired with a proteome sample (same ", shiny::em("sample"), " name)."),
         shiny::tableOutput(ns("summary")),
         shiny::h4("3. Apply"),
         shiny::actionButton(ns("apply"), "Apply design", class = "btn-primary"),
@@ -80,7 +92,29 @@ mod_design_server <- function(id, raw) {
         ann[[k]] <- clean(d)
       }
     })
-    shiny::observeEvent(input$auto, { shiny::req(ann$sugg); restore() })
+    shiny::observeEvent(input$auto, { shiny::req(ann$sugg); restore()
+      shiny::updateRadioButtons(session, "grouping", selected = "split") })
+    output$grouping_ui <- shiny::renderUI({
+      sp <- ann$sugg$factors; shiny::req(sp)
+      fp <- sp$factor_part; cp <- if (fp == "part1") "part2" else "part1"
+      lv <- function(v) { v <- unique(v); n <- suppressWarnings(as.numeric(gsub("[^0-9.]", "", v)))
+        if (!anyNA(n)) v <- v[order(n)]; paste(v, collapse = ", ") }
+      ch <- stats::setNames(c("split", "swap", "one"),
+        c(sprintf("Condition: %s; second factor: %s (compare conditions within each %s)", lv(sp$map[[cp]]), lv(sp$map[[fp]]), if (sp$time) "time point" else "level"),
+          sprintf("Condition: %s; second factor: %s", lv(sp$map[[fp]]), lv(sp$map[[cp]])),
+          sprintf("One factor with %d groups (%s)", nrow(sp$map), lv(sp$map$group))))
+      shiny::radioButtons(session$ns("grouping"), "How should the groups be compared?", ch, selected = "split")
+    })
+    shiny::observeEvent(input$grouping, {
+      sp <- ann$sugg$factors; shiny::req(sp, ann$protein)
+      for (k in c("protein", "ptm")) {
+        d <- ann[[k]]; u <- nzchar(d$condition)
+        g <- regroup(d$condition[u], d$factor[u], sp, input$grouping)
+        g <- lapply(g, function(v) { v[is.na(v)] <- ""; v })
+        d$condition[u] <- g$condition; d$factor[u] <- g$factor
+        ann[[k]] <- d
+      }
+    }, ignoreInit = TRUE)
     shiny::observeEvent(input$do_rename, {
       shiny::req(ann$protein)
       for (k in c("protein", "ptm")) {
@@ -139,13 +173,15 @@ mod_design_server <- function(id, raw) {
     output$summary <- shiny::renderTable({
       shiny::req(ann$protein, ann$ptm)
       up <- used(ann$protein); uq <- used(ann$ptm)
-      cc <- sort(unique(c(up$condition, uq$condition)))
+      grp <- function(d) ifelse(nzchar(d$factor), paste(d$condition, d$factor, sep = " / "), d$condition)
+      gp <- grp(up); gq <- grp(uq)
+      cc <- sort(unique(c(gp, gq)))
       if (!length(cc)) return(data.frame(Message = "No condition yet: fill the condition column, or use Advanced options."))
       paired <- intersect(up$sample, uq$sample)
-      data.frame(Condition = cc,
-                 `Proteome samples` = vapply(cc, function(x) sum(up$condition == x), 0L),
-                 `PTM samples` = vapply(cc, function(x) sum(uq$condition == x), 0L),
-                 `Paired` = vapply(cc, function(x) sum(uq$sample %in% paired & uq$condition == x), 0L),
+      data.frame(`Group (condition / second factor)` = cc,
+                 `Proteome samples` = vapply(cc, function(x) sum(gp == x), 0L),
+                 `PTM samples` = vapply(cc, function(x) sum(gq == x), 0L),
+                 `Paired` = vapply(cc, function(x) sum(uq$sample %in% paired & gq == x), 0L),
                  check.names = FALSE)
     }, digits = 0)
     dt <- function(d) DT::datatable(d, editable = list(target = "cell", disable = list(columns = 0)), rownames = FALSE,
@@ -167,13 +203,18 @@ mod_design_server <- function(id, raw) {
                ann = make_annotation(d$sample, d$condition, d$factor, d$subject, d$mixture))
         }
         p <- mk(ann$protein, a$protein, "proteome"); q <- mk(ann$ptm, a$ptm, "PTM")
-        new_ptm_experiment(p$assay, q$assay, annotation = list(protein = p$ann, ptm = q$ann))
+        e <- new_ptm_experiment(p$assay, q$assay, annotation = list(protein = p$ann, ptm = q$ann))
+        e$files <- a$files
+        e
       }, error = function(e) { shiny::showNotification(conditionMessage(e), type = "error", duration = NULL); NULL })
     })
     output$status <- shiny::renderPrint({
       e <- x(); shiny::req(e); an <- e$annotation
-      cat(sprintf("Design applied: %d proteome and %d PTM samples, %d conditions, %d paired samples.\nGo to 3. Processing.",
-                  nrow(an$protein), nrow(an$ptm), length(unique(c(an$protein$condition, an$ptm$condition))),
+      ng <- length(unique(c(levels(groups_of(e, "protein")), levels(groups_of(e, "ptm")))))
+      fac <- unique(stats::na.omit(an$ptm$factor))
+      cat(sprintf("Design applied: %d proteome and %d PTM samples, %d groups%s, %d paired samples.\nGo to 3. Processing.",
+                  nrow(an$protein), nrow(an$ptm), ng,
+                  if (length(fac)) sprintf(" (%d conditions x %d levels of the second factor)", length(unique(an$ptm$condition)), length(fac)) else "",
                   length(intersect(an$protein$sample, an$ptm$sample))))
     })
     x

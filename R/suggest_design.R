@@ -21,13 +21,20 @@
 #'    number (`1`, `R1`, `rep2`, ...) is removed, as is a leading run number (`01_NS_R1`), and
 #'    the rest is the condition. The position of the replicate part is chosen so that every
 #'    condition has at least two samples (`R1-A` -> `A`, `mock_24h_1` -> `mock_24h`).
+#' 5. **Two factors.** When the conditions are all the combinations of two parts (e.g. `mock_6h`,
+#'    `mock_24h`, `SARS_COV2_6h`, `SARS_COV2_24h`: 2 conditions x 2 time points), the conditions
+#'    are split into a condition and a second factor (a time-like part, `6h`, `24h`, `d3`, `T0`,
+#'    ..., is taken as the second factor; otherwise the last part). Contrasts are then built
+#'    between conditions within each level of the second factor (see [make_contrasts()]);
+#'    `factors` describes the split so that the interface can undo or swap it.
 #'
 #' @param protein,ptm `ptm_assay` objects (from [import_protein()] and [import_ptm()]).
 #' @param pattern regular expression separating the parts of a run name.
 #' @return a list with `annotation`, one data frame per table with columns `run` (column name in
 #'   the imported table), `sample` (name used in the analysis; `""` for an excluded run),
 #'   `condition` (`""` for an excluded run), `factor`, `subject` and `mixture`; and `messages`,
-#'   a plain-language summary of what was done.
+#'   a plain-language summary of what was done; `factors`, the two-factor split found in the
+#'   conditions (see [split_factors()]) or `NULL`.
 #' @examples
 #' sim <- simulate_ptm_features(n_rep = 3, n_proteins = 100, n_sites = 80, seed = 1)
 #' x <- sim_to_experiment(sim)
@@ -97,16 +104,91 @@ suggest_design <- function(protein, ptm, pattern = "[_ .-]") {
     few <- cnd[vapply(cnd, function(cc) min(sum(cond$protein %in% cc), sum(cond$ptm %in% cc)) < 2, logical(1))]
     if (length(few)) msg <- c(msg, sprintf("Check: fewer than 2 samples in %s.", short(few, 6)))
   } else msg <- c(msg, "Conditions could not be read from the sample names: type them in the tables or upload an annotation file.")
+  sp <- split_factors(unlist(cond), pattern)
+  fac <- lapply(cond, function(cc) rep(NA_character_, length(cc)))
+  if (!is.null(sp)) {
+    for (k in names(cond)) { g <- regroup(cond[[k]], fac[[k]], sp, "split"); cond[[k]] <- g$condition; fac[[k]] <- g$factor }
+    cs <- if (sp$factor_part == "part1") "part2" else "part1"
+    lv <- function(v) { v <- unique(v); n <- suppressWarnings(as.numeric(gsub("[^0-9.]", "", v)))
+      if (!anyNA(n)) v <- v[order(n)]; paste(v, collapse = ", ") }
+    ex <- sp$map[1, ]
+    msg <- c(msg, sprintf("Two factors found in these conditions: %s (condition) x %s (second factor%s). Contrasts compare the conditions within each level of the second factor (e.g. %s vs %s at %s). To compare all %d groups with each other instead, choose 'One factor' below.",
+                          lv(sp$map[[cs]]), lv(sp$map[[sp$factor_part]]), if (sp$time) ", time" else "",
+                          unique(sp$map[[cs]])[2], unique(sp$map[[cs]])[1], ex[[sp$factor_part]], nrow(sp$map)))
+  }
   ann <- lapply(c(protein = "protein", ptm = "ptm"), function(k) {
     d <- data.frame(run = runs[[k]], sample = "", condition = "", factor = "", subject = "", mixture = "", stringsAsFactors = FALSE)
     u <- which(use[[k]])
     d$sample[u] <- pm$sample[[k]]
     cc <- cond[[k]]; cc[is.na(cc)] <- ""
     d$condition[u] <- cc
+    ff <- fac[[k]]; ff[is.na(ff)] <- ""
+    d$factor[u] <- ff
     d[order(!use[[k]]), , drop = FALSE]                                       # excluded runs last
   })
   for (k in names(ann)) rownames(ann[[k]]) <- NULL
-  list(annotation = ann, messages = msg)
+  list(annotation = ann, messages = msg, factors = sp)
+}
+
+#' Find two crossed factors in condition names
+#'
+#' Splits each condition name into two parts, at its last separator or at its first one, and
+#' keeps the split when the parts are fully crossed (every combination present, at least two
+#' levels each), as in `mock_6h`, `mock_24h`, `SARS_COV2_6h`, `SARS_COV2_24h`. The part that looks
+#' like a time (`6h`, `24hpi`, `30min`, `d3`, `day2`, `T0`, ...) is proposed as the second factor;
+#' otherwise the last part.
+#' @param groups condition names (one per sample; empty and `NA` values are ignored).
+#' @param pattern regular expression separating the parts of a name.
+#' @return `NULL`, or a list with `map` (data frame `group`, `part1`, `part2`), `factor_part`
+#'   (`"part1"` or `"part2"`, the part proposed as the second factor) and `time` (whether it
+#'   looks like a time).
+#' @examples
+#' split_factors(c("mock_6h", "mock_24h", "SARS_COV2_6h", "SARS_COV2_24h"))
+#' @export
+split_factors <- function(groups, pattern = "[_ .-]") {
+  g <- unique(groups[!is.na(groups) & nzchar(groups)])
+  if (length(g) < 4) return(NULL)
+  tk <- run_tokens(g, pattern)
+  if (any(vapply(tk, function(t) length(t$tok), 0L) < 2)) return(NULL)
+  glue <- function(t, idx) { tok <- t$tok[idx]; sep <- t$sep[idx]; sep[1] <- ""; paste0(sep, tok, collapse = "") }
+  time_re <- "^(?:[0-9]+(?:[.,][0-9]+)?(?:h|hr|hrs|hpi|hpt|min|mins|m|d|day|days|w|wk|wks|week|weeks)|(?:t|h|d|day|w|wk|week)[0-9]+)$"
+  is_time <- function(v) all(grepl(time_re, v, ignore.case = TRUE, perl = TRUE))
+  try_split <- function(at_last) {
+    a <- vapply(tk, function(t) { n <- length(t$tok); glue(t, if (at_last) seq_len(n - 1) else 1L) }, "")
+    b <- vapply(tk, function(t) { n <- length(t$tok); glue(t, if (at_last) n else 2:n) }, "")
+    if (length(unique(a)) < 2 || length(unique(b)) < 2) return(NULL)
+    if (length(unique(a)) * length(unique(b)) != length(g) || anyDuplicated(paste(a, b, sep = "\r"))) return(NULL)
+    fp <- if (is_time(a) && !is_time(b)) "part1" else "part2"
+    list(map = data.frame(group = g, part1 = a, part2 = b, stringsAsFactors = FALSE), factor_part = fp,
+         time = is_time(if (fp == "part1") a else b))
+  }
+  c1 <- try_split(TRUE); c2 <- try_split(FALSE)
+  if (is.null(c1)) return(c2)
+  if (is.null(c2)) return(c1)
+  if (c2$time && !c1$time) c2 else c1
+}
+
+#' Apply or undo a two-factor split of the conditions
+#' @param condition,factor current condition and second-factor values (one per sample).
+#' @param sp result of [split_factors()].
+#' @param mode `"split"` (proposed condition and second factor), `"swap"` (the other way round)
+#'   or `"one"` (a single factor whose levels are the original condition names).
+#' @return list(condition, factor); samples whose values are not in `sp$map` are left unchanged.
+#' @keywords internal
+regroup <- function(condition, factor, sp, mode = c("split", "swap", "one")) {
+  mode <- match.arg(mode)
+  m <- sp$map; fp <- sp$factor_part; cp <- if (fp == "part1") "part2" else "part1"
+  factor[is.na(factor)] <- ""; condition[is.na(condition)] <- ""
+  i <- match(condition, m$group)                                            # currently one factor
+  j <- match(paste(condition, factor), paste(m[[cp]], m[[fp]]))             # currently split
+  l <- match(paste(condition, factor), paste(m[[fp]], m[[cp]]))             # currently swapped
+  i[is.na(i)] <- j[is.na(i)]; i[is.na(i)] <- l[is.na(i)]
+  hit <- !is.na(i)
+  if (mode == "one")   { condition[hit] <- m$group[i[hit]]; factor[hit] <- "" }
+  if (mode == "split") { condition[hit] <- m[[cp]][i[hit]]; factor[hit] <- m[[fp]][i[hit]] }
+  if (mode == "swap")  { condition[hit] <- m[[fp]][i[hit]]; factor[hit] <- m[[cp]][i[hit]] }
+  condition[!nzchar(condition)] <- NA; factor[!nzchar(factor)] <- NA
+  list(condition = condition, factor = factor)
 }
 
 #' Split counts into a high and a low group at a gap of more than `ratio`-fold

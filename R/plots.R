@@ -159,6 +159,20 @@ plot_heatmap_matrix <- function(mat, title = "", limits = c(0, 1), cluster = TRU
   p
 }
 
+#' Correlation matrix between samples
+#'
+#' Pearson correlation of the log2 intensities of each pair of samples (features observed in
+#' both), ordered by clustering, with the condition of each sample.
+#' @inheritParams plot_pca
+#' @export
+plot_correlation_matrix <- function(x, assay = "protein") {
+  r <- qc_pearson(x, assay)
+  lo <- suppressWarnings(min(r, na.rm = TRUE)); if (!is.finite(lo)) lo <- 0
+  plot_heatmap_matrix(r, sprintf("Pearson correlation between samples, %s", if (assay == "protein") "total proteome" else "PTM"),
+                      limits = c(floor(lo * 20) / 20, 1),
+                      groups = stats::setNames(as.character(groups_of(x, assay)), x$annotation[[assay]]$sample))
+}
+
 #' Number of features observed per sample
 #'
 #' Runs that quantified far fewer features than the others (failed injections, empty
