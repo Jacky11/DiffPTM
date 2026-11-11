@@ -100,3 +100,28 @@ test_that("the design module proposes a design and applies it", {
     expect_setequal(intersect(e$annotation$ptm$sample, e$annotation$protein$sample), s)
   })
 })
+
+test_that("two crossed factors are found in condition names and can be undone or swapped", {
+  sp <- split_factors(c("mock_6h", "mock_24h", "SARS_COV2_6h", "SARS_COV2_24h"))
+  expect_equal(sp$factor_part, "part2"); expect_true(sp$time)
+  expect_setequal(sp$map$part1, c("mock", "SARS_COV2"))
+  expect_null(split_factors(c("A", "B", "C", "D")))
+  expect_null(split_factors(c("mock_6h", "mock_24h", "SARS_6h")))                 # not crossed
+  expect_equal(split_factors(c("24h_mock", "24h_inf", "6h_mock", "6h_inf"))$factor_part, "part1")
+  cond <- c("mock_6h", "SARS_COV2_24h")
+  g <- regroup(cond, c(NA, NA), sp, "split"); expect_equal(g$condition, c("mock", "SARS_COV2")); expect_equal(g$factor, c("6h", "24h"))
+  g2 <- regroup(g$condition, g$factor, sp, "swap"); expect_equal(g2$condition, c("6h", "24h"))
+  g3 <- regroup(g2$condition, g2$factor, sp, "one"); expect_equal(g3$condition, cond); expect_true(all(is.na(g3$factor)))
+})
+
+test_that("suggest_design splits condition x time and contrasts are built within time points", {
+  x <- sim_pair(); s <- colnames(x$ptm$intensity)                     # A_1..A_3, B_1..B_3
+  lab <- c("mock_6h", "mock_24h", "inf_6h", "inf_24h")
+  new <- paste0(rep(lab, each = 3), "_", rep(1:3, 4))
+  sim <- simulate_ptm_features(n_rep = 6, n_proteins = 150, n_sites = 100, seed = 4)
+  y <- sim_to_experiment(sim); y$protein$n_features <- NULL; y$ptm$n_features <- NULL
+  g <- suggest_design(set_run_names(y$protein, new), set_run_names(y$ptm, paste0("Phospho_", new)))
+  u <- used(g$annotation$ptm)
+  expect_setequal(u$condition, c("mock", "inf")); expect_setequal(u$factor, c("6h", "24h"))
+  expect_true(any(grepl("Two factors", g$messages)))
+})

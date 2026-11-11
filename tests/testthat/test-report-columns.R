@@ -1,0 +1,43 @@
+test_that("columns of the Excel workbook are described and the edited Methods text is exported", {
+  ex <- system.file("extdata", "example", package = "DiffPTM")
+  prot <- import_protein(file.path(ex, "protein.tsv"), "Generic"); ptm <- import_ptm(file.path(ex, "ptm.tsv"), "Generic")
+  ann <- read_annotation(file.path(ex, "annotation.tsv"))
+  x <- new_ptm_experiment(prot, ptm, annotation = list(protein = ann, ptm = ann)) |> filter_min_observed(min_n = 2) |> normalise() |> match_ptm_to_protein("id")
+  mp <- methods_paragraph(x)
+  expect_match(mp, "Input files, exported from Generic and imported on [0-9-]+: total proteome table protein.tsv \\([0-9]+ kB, modified [0-9-]+ [0-9:]+\\); PTM table ptm.tsv")
+  expect_match(mp, "Giai Gianetto \\(2023\\)")
+  expect_match(mp, "single model \\(Giai Gianetto, 2023\\)")
+  expect_match(mp, "References\n- Giai Gianetto Q, Salhi Z")
+  expect_match(mp, "Methods Mol Biol. 2023;2426:267-302")
+  y <- collapse_to_sites(x); expect_false(is.null(y$ptm$source))
+  z <- x; a <- z$ptm                                              # one site reported for two accessions
+  dup <- a$meta[1, ]; dup$feature_id <- "dup"; dup$protein_ids <- "OTHER"
+  a$meta <- rbind(a$meta, dup); a$intensity <- rbind(a$intensity, dup = a$intensity[1, ]); a$raw_detected <- !is.na(a$intensity)
+  z$ptm <- a
+  m <- merge_redundant_ptm(z, key = c(z$ptm$meta$feature_id[-nrow(z$ptm$meta)], z$ptm$meta$feature_id[1]))
+  expect_equal(nrow(m$ptm$intensity), nrow(x$ptm$intensity))
+  expect_false(is.null(m$ptm$source))
+  res <- suppressMessages(run_methods(x, make_contrasts(x), methods = "limma"))
+  f <- tempfile(fileext = ".xlsx")
+  write_results_xlsx(x, res, f, methods_text = "My edited methods.")
+  sh <- openxlsx::getSheetNames(f)
+  expect_equal(sh[1:2], c("README", "column_descriptions"))
+  rd <- openxlsx::read.xlsx(f, "README"); expect_equal(rd$description[rd$sheet == "Methods"], "My edited methods.")
+  cd <- openxlsx::read.xlsx(f, "column_descriptions")
+  dpu <- cd[cd$sheet == "ptm_DPU_limma", ]
+  expect_true(all(nzchar(dpu$description[grepl("^(log2FC|se|df|ci_lo|ci_hi|pvalue|adj_pvalue)\\.", dpu$column)])))
+  expect_match(describe_columns("log2FC.B_vs_A"), "contrast B_vs_A")
+  expect_match(describe_columns("sig_limma"), "method limma")
+})
+
+test_that("method agreement plot and correlation matrix are drawn", {
+  set.seed(1); f <- paste0("s", 1:100)
+  mk <- function(m, p) data.frame(feature_id = f, analysis = "ptm_DPU", contrast = "B_vs_A", method = m, log2FC = rnorm(100), adj_pvalue = p)
+  u <- runif(100); res <- rbind(mk("limma", u), mk("msqrob2ptm", pmin(1, u * 2)))
+  expect_s3_class(plot_method_overlap(res, 0.05, 0), "ggplot")
+  expect_null(plot_method_overlap(res[res$method == "limma", ]))
+  ex <- system.file("extdata", "example", package = "DiffPTM")
+  prot <- import_protein(file.path(ex, "protein.tsv"), "Generic"); ann <- read_annotation(file.path(ex, "annotation.tsv"))
+  x <- new_ptm_experiment(prot, import_ptm(file.path(ex, "ptm.tsv"), "Generic"), annotation = list(protein = ann, ptm = ann))
+  expect_s3_class(plot_correlation_matrix(x, "protein"), "ggplot")
+})
