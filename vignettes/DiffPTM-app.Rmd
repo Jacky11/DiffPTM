@@ -120,18 +120,26 @@ Every option is explained on the page; the defaults suit most data sets.
   peptides), where it gives the position of the modified residue. A site that matches several
   quantified protein groups (shared peptide, isoforms) is corrected with their mean abundance
   (default), with the first one, or kept for the abundance test only.
-* *Normalisation*: global median centering (default: removes differences of loading and of
-  enrichment efficiency between samples); per-condition median centering (keeps a global shift
-  between conditions; only when such a change is expected and loading was controlled
-  independently, otherwise a loading difference becomes a change of every site); ComBat (batch
-  = second factor); none (data already normalised by the software).
+* *Normalisation*: each choice makes an assumption. Global median centering (default) assumes
+  that the bulk of the features does not change between conditions, so a global shift between
+  conditions is removed, whether technical (loading, enrichment efficiency) or biological.
+  Per-condition median centering keeps such a shift and assumes that all conditions were loaded
+  and enriched equally; otherwise a loading difference becomes a change of every feature.
+  ComBat removes a batch effect (batch = second factor); none keeps the values of the software.
+  Above the options, the page shows what the data suggest (`normalisation_diagnostics()`): when the
+  PTM assay is shifted between conditions but the bulk of its sites is not, the shift comes from a
+  subset of sites and per-condition centering is recommended; otherwise global centering, with a
+  note on whether the proteome of the same samples moved alike (loading).
 * *Imputation*: off by default; the tests use the observed values.
 
 The **quality-control** plots show, for each table: the number of features observed per
 sample (runs that quantified far fewer features than the others stand out and should be
-removed in step 2), the intensity distributions, a PCA, the Pearson correlation matrix between
-samples and the Jaccard index of detection between samples, both with the conditions as a
-colour strip. The processing log lists every operation; it becomes the Materials & Methods
+removed in step 2), the intensity distributions, a PCA and the variance explained by its
+components, the Pearson correlation matrix between samples and the Jaccard index of detection
+between samples (with the conditions as a colour strip and the lowest values overall and within a
+condition), the hierarchical clustering of the samples on each, and the overlap of the features
+detected in the samples: an UpSet plot for all samples and a Venn diagram for the two to four
+samples of a condition (features, or modified proteins for the PTM table). The processing log lists every operation; it becomes the Materials & Methods
 paragraph of the report.
 
 ## 4. Statistics
