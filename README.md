@@ -29,8 +29,13 @@ DiffPTM needs R ≥ 4.2. Some dependencies come from Bioconductor, so install th
 
 ```r
 install.packages(c("BiocManager", "remotes"))
-BiocManager::install("Jacky11/DiffPTM")
+BiocManager::install("Jacky11/DiffPTM", update = FALSE)
 ```
+
+Install in a fresh R session (in RStudio: *Session → Restart R*): if DiffPTM is already
+loaded, R reports that the package "is in use" and does not replace it. `update = FALSE` skips
+the offer to update every other installed package; check afterwards with
+`packageVersion("DiffPTM")`.
 
 This installs DiffPTM and its required dependencies. The optional packages that add the
 MSstatsPTM and msqrob2PTM model forms, imputation, sequence-based site-to-protein matching and
@@ -46,7 +51,7 @@ install.packages(c("imp4p", "cp4p", "AhoCorasickTrie", "rvg", "plotly", "ggrepel
 To install with the vignettes (slower):
 
 ```r
-BiocManager::install("Jacky11/DiffPTM", build_vignettes = TRUE, dependencies = TRUE)
+BiocManager::install("Jacky11/DiffPTM", build_vignettes = TRUE, dependencies = TRUE, update = FALSE)
 ```
 
 Without R: a Docker image serves the interface on <http://localhost:3838>
@@ -107,9 +112,11 @@ software are in `inst/extdata/formats/`.
   equivalent to limma on the within-sample site-minus-protein differences). The consensus model
   (`blocking = "random"`) gains degrees of freedom but assumes that sites and proteins vary alike;
   `dpu_diagnostics()` reports when that holds.
-* **Normalisation.** Each assay is centred on the global median of all samples. Use
-  per-condition centring (`method = "median"`) only when a global change of modification is
-  expected and loading is controlled independently.
+* **Normalisation.** Each assay is centred on the global median of all samples
+  (`method = "global_median"`), which assumes that the bulk of the features does not change
+  between conditions. Per-condition centring (`method = "median"`) keeps a global shift between
+  conditions and assumes instead that all conditions were loaded and enriched equally.
+  `normalisation_diagnostics(x)`, run before `normalise()`, says which one the data support.
 * **Missing values.** Tests use the observed values; imputation is optional.
 * **Unit protein coefficient.** Every usage test assumes that, without a usage change, a site
   follows its protein one to one; `usage_beta_check()` flags calls that depend on it.
