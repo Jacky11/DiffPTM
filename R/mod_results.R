@@ -12,7 +12,7 @@ mod_results_ui <- function(id) {
     ),
     shiny::fluidRow(
       shiny::column(4, shiny::plotOutput(ns("hist"), height = 300)),
-      shiny::column(4, shiny::plotOutput(ns("counts"), height = 300)),
+      shiny::column(4, shiny::plotOutput(ns("counts"), height = 300), shiny::plotOutput(ns("means"), height = 420)),
       shiny::column(4, shiny::h4("Agreement between methods"),
                     shiny::p(class = "step-help", "Significant features of the selected analysis and contrast, by combination of methods (UpSet plot: ",
                              "each bar counts the features called by exactly the methods marked below it). Run two or three methods at the Statistics step to see it."),
@@ -43,6 +43,11 @@ mod_results_server <- function(id, stats) {
       parent <- stats::setNames(meta$matched_protein, meta$feature_id)
       plot_fc_comparison(r[r$analysis == "ptm_DPA", ], r[r$analysis == "protein_DPA", ], parent, r[r$analysis == "ptm_DPU", ], s$fdr, s$min_log2fc,
                          title = "PTM feature vs protein fold change") })
+    output$means <- shiny::renderPlot({ s <- stats(); shiny::req(input$contrast)
+      ct <- s$contrasts[s$contrasts$name == input$contrast, ]
+      a <- if (input$analysis == "protein_DPA") "protein" else "ptm"
+      plot_condition_means(s$x, sub(), ct$group1, ct$group2, a, s$fdr, s$min_log2fc,
+                           title = paste("Mean intensities,", c(protein_DPA = "proteins (DPA)", ptm_DPA = "PTM (DPA)", ptm_DPU = "PTM (usage calls)")[[input$analysis]])) })
     output$counts <- shiny::renderPlot({ s <- stats(); plot_counts(s$res, s$fdr, s$min_log2fc, input$analysis) + ggplot2::labs(title = paste("Significant features,", titles[input$analysis])) })
     output$table <- DT::renderDT({ s <- stats(); d <- sub(); d <- d[!is.na(d$adj_pvalue) & d$adj_pvalue < s$fdr & abs(d$log2FC) >= s$min_log2fc, ]
       first <- intersect(c("label", "feature_id", "gene", "protein_ids", "residue", "position", "contrast", "log2FC", "se", "df", "ci_lo", "ci_hi", "statistic", "pvalue", "adj_pvalue"), names(d))

@@ -106,6 +106,14 @@ write_results_xlsx <- function(x, res, path, extra = list(), blocking = "auto", 
     m <- meta[match(wide$feature_id, meta$feature_id), , drop = FALSE]
     first <- intersect(c("feature_id", "label", "gene", "protein_ids", "residue", "position", "multiplicity", "localization_prob"), names(m))
     wide <- cbind(m[, c(first, setdiff(names(m), c(first, "feature_id"))), drop = FALSE], wide[, setdiff(names(wide), "feature_id"), drop = FALSE])
+    a <- if (an == "protein_DPA") "protein" else "ptm"                 # mean log2 intensity per group, as in the original app
+    gm <- group_means(x[[a]]$intensity, groups_of(x, a))
+    wide <- cbind(wide, gm[match(wide$feature_id, rownames(x[[a]]$intensity)), , drop = FALSE])
+    if (an == "ptm_DPU" && !is.null(x$ptm$protein_intensity)) {
+      pm <- group_means(x$ptm$protein_intensity, groups_of(x, "protein")[match(colnames(x$ptm$protein_intensity), x$annotation$protein$sample)])
+      names(pm) <- paste0("protein_", names(pm))
+      wide <- cbind(wide, pm[match(wide$feature_id, rownames(x$ptm$intensity)), , drop = FALSE])
+    }
     what <- c(protein_DPA = "differential protein abundance", ptm_DPA = "differential PTM abundance (site intensity, not corrected for its protein)",
               ptm_DPU = "differential PTM usage (site corrected for its protein)")[[an]]
     add(paste(an, e, sep = "_"), wide, sprintf("Results of %s with method %s, one block of columns per contrast: log2FC, standard error, degrees of freedom, 95 %% confidence interval, p-value, adjusted p-value (NA = not tested). See column_descriptions.", what, e),
@@ -166,6 +174,15 @@ write_results_pdf <- function(figures, path, width = 8, height = 7) {
   invisible(path)
 }
 
+#' Mean log2 intensity per group (observed values)
+#' @keywords internal
+group_means <- function(M, g) {
+  g <- factor(g, levels = unique(as.character(g)))
+  out <- vapply(levels(g), function(l) rowMeans(M[, g == l, drop = FALSE], na.rm = TRUE), numeric(nrow(M)))
+  out <- matrix(out, nrow(M)); out[is.nan(out)] <- NA
+  stats::setNames(as.data.frame(out), paste0("mean_log2_", levels(g)))
+}
+
 #' Plain-language description of result and table columns
 #' @param cols column names.
 #' @param samples optional named character vector: descriptions of sample columns.
@@ -199,7 +216,9 @@ describe_columns <- function(cols, samples = NULL) {
     "^n_protein_only$" = "Samples of the group where the protein is observed and the PTM feature is not",
     "^n_both$" = "Samples of the group where both are observed",
     "^flag$" = "concordant; ptm_without_protein (the modification is seen where its protein is not: no usage test possible); protein_without_ptm; no_parent_protein (no matching protein in the proteome table)",
-    "^n_methods_significant$" = "Number of methods calling the feature significant")
+    "^n_methods_significant$" = "Number of methods calling the feature significant",
+    "^protein_mean_log2_" = "Mean log2 intensity, in this group, of the protein matched to the PTM feature (observed values)",
+    "^mean_log2_" = "Mean log2 intensity of the feature in this group (processed values, observed samples only)")
   out <- character(length(cols))
   for (i in seq_along(cols)) {
     v <- cols[i]

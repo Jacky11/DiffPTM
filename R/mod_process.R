@@ -86,11 +86,24 @@ mod_process_ui <- function(id) {
     ),
     shiny::fluidRow(
       shiny::column(6, shiny::plotOutput(ns("detected"), height = 300), shiny::plotOutput(ns("dist"), height = 300)),
-      shiny::column(6, shiny::plotOutput(ns("pca"), height = 380))
+      shiny::column(6, shiny::plotOutput(ns("pca"), height = 380), shiny::plotOutput(ns("scree"), height = 240))
     ),
     shiny::fluidRow(
       shiny::column(6, shiny::plotOutput(ns("pearson"), height = 560)),
       shiny::column(6, shiny::plotOutput(ns("jaccard"), height = 560))
+    ),
+    shiny::fluidRow(
+      shiny::column(6, shiny::plotOutput(ns("dend_pearson"), height = 460)),
+      shiny::column(6, shiny::plotOutput(ns("dend_jaccard"), height = 460))
+    ),
+    shiny::h4("Features detected in each sample"),
+    help("Overlap of the features detected in the samples: an UpSet plot (each bar counts the features detected in exactly the samples ",
+         "marked below it) for all samples or for more than four samples, a Venn diagram for the two to four samples of a condition. ",
+         "For the PTM table, the features can be grouped by protein (modified proteins)."),
+    shiny::fluidRow(
+      shiny::column(3, shiny::uiOutput(ns("overlap_scope_ui")),
+                    shiny::radioButtons(ns("overlap_level"), "Count", c("Features" = "feature", "Modified proteins (PTM table)" = "protein"))),
+      shiny::column(9, shiny::plotOutput(ns("overlap"), height = 480))
     )
   )
 }
@@ -145,9 +158,16 @@ mod_process_server <- function(id, annotated) {
       })
     })
     output$detected <- shiny::renderPlot({ shiny::req(x()); plot_detected_per_sample(x(), input$qc_assay) })
-    output$jaccard <- shiny::renderPlot({ shiny::req(x()); x <- x(); ann <- x$annotation[[input$qc_assay]]
-      plot_heatmap_matrix(qc_jaccard(x, input$qc_assay), paste("Jaccard index on detection,", if (input$qc_assay == "protein") "total proteome" else "PTM"), groups = stats::setNames(as.character(groups_of(x, input$qc_assay)), ann$sample)) })
+    output$jaccard <- shiny::renderPlot({ shiny::req(x()); plot_jaccard_matrix(x(), input$qc_assay) })
     output$pearson <- shiny::renderPlot({ shiny::req(x()); plot_correlation_matrix(x(), input$qc_assay) })
+    output$scree <- shiny::renderPlot({ shiny::req(x()); tryCatch(plot_pca_scree(x(), input$qc_assay), error = function(e) NULL) })
+    output$dend_pearson <- shiny::renderPlot({ shiny::req(x()); plot_dendrogram(x(), input$qc_assay, "pearson") })
+    output$dend_jaccard <- shiny::renderPlot({ shiny::req(x()); plot_dendrogram(x(), input$qc_assay, "jaccard") })
+    output$overlap_scope_ui <- shiny::renderUI({ shiny::req(x())
+      shiny::selectInput(session$ns("overlap_scope"), "Samples", c("All samples" = "", levels(groups_of(x(), input$qc_assay)))) })
+    output$overlap <- shiny::renderPlot({ shiny::req(x(), !is.null(input$overlap_scope))
+      lev <- if (input$qc_assay == "ptm") input$overlap_level else "feature"
+      plot_detection_overlap(x(), input$qc_assay, group = if (nzchar(input$overlap_scope)) input$overlap_scope else NULL, level = lev) })
     output$pca <- shiny::renderPlot({ shiny::req(x()); plot_pca(x(), input$qc_assay) })
     output$dist <- shiny::renderPlot({ shiny::req(x()); plot_intensity_distributions(x(), input$qc_assay) })
     output$log <- shiny::renderPrint({ shiny::req(x()); cat(x()$log, sep = "\n") })

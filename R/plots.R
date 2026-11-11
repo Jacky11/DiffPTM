@@ -171,7 +171,28 @@ plot_correlation_matrix <- function(x, assay = "protein") {
   lo <- suppressWarnings(min(r, na.rm = TRUE)); if (!is.finite(lo)) lo <- 0
   plot_heatmap_matrix(r, sprintf("Pearson correlation between samples, %s", if (assay == "protein") "total proteome" else "PTM"),
                       limits = c(floor(lo * 20) / 20, 1),
-                      groups = stats::setNames(as.character(groups_of(x, assay)), x$annotation[[assay]]$sample))
+                      groups = stats::setNames(as.character(groups_of(x, assay)), x$annotation[[assay]]$sample)) +
+    ggplot2::labs(subtitle = min_similarity_text(r, x, assay))
+}
+
+#' Jaccard index of detection between samples, as a heatmap
+#' @inheritParams plot_pca
+#' @export
+plot_jaccard_matrix <- function(x, assay = "protein") {
+  J <- qc_jaccard(x, assay)
+  plot_heatmap_matrix(J, sprintf("Jaccard index on detection, %s", if (assay == "protein") "total proteome" else "PTM"),
+                      groups = stats::setNames(as.character(groups_of(x, assay)), x$annotation[[assay]]$sample)) +
+    ggplot2::labs(subtitle = min_similarity_text(J, x, assay))
+}
+
+#' Lowest similarity between two samples, overall and within the conditions
+#' @keywords internal
+min_similarity_text <- function(m, x, assay) {
+  g <- stats::setNames(as.character(groups_of(x, assay)), x$annotation[[assay]]$sample)[rownames(m)]
+  off <- m; diag(off) <- NA
+  w <- vapply(unique(g), function(l) { s <- off[g == l, g == l, drop = FALSE]; if (all(is.na(s))) NA_real_ else min(s, na.rm = TRUE) }, 0)
+  i <- which.min(w)
+  sprintf("lowest: %.3f between all samples, %.3f within a condition (%s)", min(off, na.rm = TRUE), w[i], names(w)[i])
 }
 
 #' Number of features observed per sample

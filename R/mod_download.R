@@ -28,17 +28,27 @@ mod_download_server <- function(id, stats) {
     mm <- function() { t <- input$mm_text; if (is.null(t) || !nzchar(trimws(t))) generated() else t }
     figures <- function(s) {
       figs <- list()
-      grp <- function(a) stats::setNames(as.character(groups_of(s$x, a)), s$x$annotation[[a]]$sample)
       nm <- c(protein = "total proteome", ptm = "PTM")
-      # 1. heatmaps, 2. other quality control, 3. results
+      safe <- function(e) tryCatch(e, error = function(err) NULL)
+      # 1. heatmaps and clustering, 2. detection overlaps, 3. other quality control, 4. results
       for (a in c("protein", "ptm")) {
-        figs[[paste("Correlation matrix,", nm[[a]])]] <- tryCatch(plot_correlation_matrix(s$x, a), error = function(e) NULL)
-        figs[[paste("Jaccard index on detection,", nm[[a]])]] <- plot_heatmap_matrix(qc_jaccard(s$x, a), paste("Jaccard index on detection,", nm[[a]]), groups = grp(a))
+        figs[[paste("Correlation matrix,", nm[[a]])]] <- safe(plot_correlation_matrix(s$x, a))
+        figs[[paste("Jaccard index on detection,", nm[[a]])]] <- safe(plot_jaccard_matrix(s$x, a))
       }
       for (a in c("protein", "ptm")) {
-        figs[[paste("PCA,", nm[[a]])]] <- tryCatch(plot_pca(s$x, a), error = function(e) NULL)
-        figs[[paste("Intensity distributions,", nm[[a]])]] <- plot_intensity_distributions(s$x, a)
-        figs[[paste("Features per sample,", nm[[a]])]] <- plot_detected_per_sample(s$x, a)
+        figs[[paste("Clustering (Pearson),", nm[[a]])]] <- safe(plot_dendrogram(s$x, a, "pearson"))
+        figs[[paste("Clustering (Jaccard),", nm[[a]])]] <- safe(plot_dendrogram(s$x, a, "jaccard"))
+      }
+      lv <- list(protein = list(c("protein", "feature", "proteins")), ptm = list(c("ptm", "feature", "PTM features"), c("ptm", "protein", "modified proteins")))
+      for (L in unlist(lv, recursive = FALSE)) {
+        figs[[paste("Detected", L[3], "- all samples")]] <- safe(plot_detection_overlap(s$x, L[1], level = L[2]))
+        for (g in levels(groups_of(s$x, L[1]))) figs[[paste("Detected", L[3], "- condition", g)]] <- safe(plot_detection_overlap(s$x, L[1], group = g, level = L[2]))
+      }
+      for (a in c("protein", "ptm")) {
+        figs[[paste("PCA,", nm[[a]])]] <- safe(plot_pca(s$x, a))
+        figs[[paste("PCA variance explained,", nm[[a]])]] <- safe(plot_pca_scree(s$x, a))
+        figs[[paste("Intensity distributions,", nm[[a]])]] <- safe(plot_intensity_distributions(s$x, a))
+        figs[[paste("Features per sample,", nm[[a]])]] <- safe(plot_detected_per_sample(s$x, a))
       }
       lab <- function(r, an) { meta <- if (an == "protein_DPA") s$x$protein$meta else s$x$ptm$meta; r$label <- meta$label[match(r$feature_id, meta$feature_id)]; r }
       for (an in unique(s$res$analysis)) figs[[paste("Counts", an)]] <- plot_counts(s$res, s$fdr, s$min_log2fc, an)
@@ -50,6 +60,9 @@ mod_download_server <- function(id, stats) {
           if (!nrow(r)) next
           figs[[paste("Volcano", an, ct, e)]] <- plot_volcano(lab(r, an), s$fdr, s$min_log2fc, title = paste(an, ct, e))
           figs[[paste("p-values", an, ct, e)]] <- plot_pvalue_histogram(r, title = paste("Raw p-values", an, ct, e))
+          cr <- s$contrasts[s$contrasts$name == ct, ]
+          if (an != "ptm_DPU") figs[[paste("Mean intensities", an, ct, e)]] <- safe(plot_condition_means(s$x, r, cr$group1, cr$group2, if (an == "protein_DPA") "protein" else "ptm",
+                                                                                     s$fdr, s$min_log2fc, title = paste("Mean intensities,", an, ct, e)))
         }
         r <- s$res[s$res$method == e & s$res$contrast == ct, ]
         if (all(c("ptm_DPA", "protein_DPA") %in% r$analysis)) {
