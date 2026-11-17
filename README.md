@@ -1,7 +1,6 @@
 # DiffPTM
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/Jacky11/DiffPTM/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/Jacky11/DiffPTM/actions/workflows/R-CMD-check.yaml)
 [![License: GPL-3](https://img.shields.io/badge/license-GPL--3-blue.svg)](LICENSE.md)
 <!-- badges: end -->
 
