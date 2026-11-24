@@ -1,0 +1,44 @@
+# Example parameter file: all parameters with their default value.
+# List the sample columns of a file with:
+#   Rscript scripts/run_analysis.R --list-samples data/proteinGroups.txt Raw
+
+input_file: ../data/proteinGroups.txt   # relative to this file, or absolute
+spectronaut: false        # true for a Spectronaut report
+intensity: Raw            # Raw (Intensity columns) or LFQ (LFQ intensity columns)
+delete_columns: ~         # ~ = all columns flagging proteins with "+" (Reverse, Potential.contaminant,
+                          #     Only.identified.by.site); or a list, e.g. [Reverse, Potential.contaminant]
+
+cond1_name: Control       # condition 1 (controls when SAINT is used)
+cond1_samples: [Intensity.Ctrl_1, Intensity.Ctrl_2, Intensity.Ctrl_3]
+cond2_name: Treated       # condition 2 (baits when SAINT is used)
+cond2_samples: [Intensity.Trt_1, Intensity.Trt_2, Intensity.Trt_3]
+
+ibaq: true                # average iBAQ of the present/absent proteins
+min_unique_peptides: 1    # a value is quantified if it has at least this number of unique peptides
+min_observed: 2           # a protein is sufficiently quantified in a condition if it has at least this number
+min_percent_observed: 0   #   of quantified values and at least this % of quantified values in the condition
+quantified_in: one        # tested if sufficiently quantified in "one" (at least one) or "each" condition
+present_min: ~            # present/absent: min. quantified values where present (~ = same as above)
+absent_max: 0             # present/absent: max. quantified values where considered absent
+normalization: Median     # Median or None
+imputation: MLE           # MLE, SLSA or None (imp4p)
+fold_change: 2            # minimal fold-change (not log2)
+test: LIMMA               # LIMMA or paired.LIMMA
+pi0_method: pounds        # pounds or slim (cp4p)
+conditional_pvalues: false # true: p-values conditional on |log2FC| > threshold before the FDR adjustment
+fdr: 0.01
+
+saint: false              # SAINTexpress, see bin/README.md
+saint_avgp: 0.5
+saint_exe: ~              # ~ = bin/SAINTexpress-int(.exe)
+
+editable_pptx: false      # additional PowerPoint file with editable plots (package 'export')
+
+overlap: false            # Jaccard / overlap indices + pvclust AU/BP
+overlap_prefix: AllProteins
+overlap_groups: ""        # "" = sample name without trailing number, or e.g. "C, C, C, T, T, T"
+overlap_nboot: 10000
+overlap_nperm: 9999
+n_cores: 5                # pvclust results depend on the number of cores
+
+seed: 1234                # used by the SLSA imputation only
